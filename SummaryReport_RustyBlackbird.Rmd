@@ -2,7 +2,9 @@
 title: "Summary report: Rusty Blackbird habitat suitability on wintering grounds and during spring migration"
 author: "Brian S. Evans"
 date: "October 1, 2016"
-output: pdf_document
+output: 
+  pdf_document:
+    fig_caption: yes
 ---
 
 # Overview of methods
@@ -22,6 +24,8 @@ Assessment of habitat suitability for winter and spring blitz periods required s
 ## 1. Model evaluation
 
 To evaluate models, we assessed the area under the receiver operator curve (AUC), a measure of model performance. While the details of AUC are outside of the goals of this document, AUC describes the sensitivity and specificity of models, with values of 0.5 representing equivalent model performance relative to random, 0.7 - 0.8 representing "fair" performance, 0.8 - 0.9 "good" performance, and 0.9 - 1.0 "excellent" model performance. AUC was calculated by separating samples into 5 "folds" of training and test samples and examining how well training samples predict test samples (cross-validation with k-fold partitioning).Because the number of samples used to develop models decreased with flock size, this suggests that larger flocks are observed across a narrower range of the environmental covariates (tested explicitely in Number 4, below). We tested whether the predictive capacity of models varied by flock size by comparing training AUC across folds for a given flock size class against a null distribution developed by randomizing two flock size classes (e.g., large vs. small flocks). Similarly, determine whether Blitz data improved estimates evaluate the performance of models relative to observation methods (eBird or Blitz, Winter Blitz only), we compared observed AUC against a null distribution developed by randomizing eBird and Blitz samples. Our findings show that models developed using eBird and Blitz data, combined, performed better than either eBird and Blitz alone. We found strong evidence that model performance increased with increased flock size, with fair performance for small flocks and good perfomance for medium and large flocks (across observation methods). There was not evidence for a difference in predictive capacity between Blitz and eBird samples, however, there was strong evidence that the inclusion of Blitz data (i.e., in combined Blitz and eBird observation methods) greatly improved model performance for large and medium flock size classes.
+
+![A: Example receiver operator curves (ROC) for cross-validation runs of large flocks during the Winter Blitz period, 2009-2011. The dotted line represents the null model of random model perfomance. B:Area under the receiver operator curve (AUC) across flock size and observation classes for the Winter Blitz period, 2009-2011. Error bars represent the 95% confidence interval about mean AUC values across cross-validation runs.](C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/fig1_roc_auc.png)
 
 ## 2. Habitat suitability for small, medium, and large flocks of Rusty Blackbirds
 
