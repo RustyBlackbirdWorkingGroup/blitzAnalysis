@@ -548,6 +548,121 @@ large2009 <- getLogisticPrediction(bestModelLarge, 2009)
 # ---- Area, prevalence, threshold ----
 #----------------------------------------------------------------------------*
 
+runMaxentAreaPrevalence <- function(swd, bestModel, betaMultiplier){
+  # Get environmental variables to include from the best model:
+  variablesToInclude <- getVariableContribution(bestModel) %>%
+    .$variable
+  # Remove environmental variables not used in this model:
+  swdReduced <- swd %>%
+    select(pa, k) %>%
+    bind_cols(
+      swd %>% select(one_of(variablesToInclude))
+    )
+  # Make background, training, and test points:
+  swdTrain <- swdReduced %>%
+    select(-k) %>%
+    data.frame
+  # Set model arguments
+  modArguments <- c('nothreshold', 'nohinge', 'noproduct','noquadratic',
+                    str_c('betamultiplier=', betaMultiplier),
+                    'addallsamplestobackground',
+                    'writebackgroundpredictions',
+                    'noautofeature','nooutputgrids',
+                    'maximumiterations=10000', 'verbose')
+  # Run maxent model with training and background data:
+  maxentModel <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
+  return(maxentModel)
+}
+
+getAreaPrevalenceFrame <- function(model, i){
+  results <- model@results %>%
+    data.frame
+  results$stat <- row.names(results)
+  row.names(results) <- NULL
+  names(results) <- c('value', 'stat')
+  results %>%
+    filter(
+      str_detect(stat,'Prevalence')|
+        str_detect(stat, 'Equal.training.sensitivity.and.specificity.logistic.threshold')|
+        str_detect(stat, 'Equal.training.sensitivity.and.specificity.area')
+      ) %>%
+    mutate(
+      iteration = i,
+      stat = ifelse(str_detect(stat, 'Prevalence'), 'prevalence', stat),
+      stat = ifelse(str_detect(stat, 'logistic'), 'threshold', stat),
+      stat = ifelse(str_detect(stat, 'area'), 'area', stat)
+      ) %>%
+    spread(stat, value) %>%
+    as.matrix
+}
+
+# Generate a random sample of flock size 1 by flock size 2
+# Note: Flock size 1 is the flocks size of interest, comparison to flock size 2
+
+randomSWDpair <- function(swd1, swd2){
+  nSamples <- nrow(dplyr::filter(swd1, pa == 1))
+  # Get background points:
+  bgPoints <- dplyr::filter(swd1, pa == 0)
+  # Get random sample of presence points :
+  bind_rows(
+    dplyr::filter(swd1, pa == 1),
+    dplyr::filter(swd2, pa == 1)
+    ) %>%
+    dplyr::sample_n(nSamples,
+      replace = FALSE) %>%
+    dplyr:: bind_rows(bgPoints)
+}
+
+
+# Empty matrices for model results:
+
+outMatLS <- matrix(nrow = 10000, ncol = 4)
+outMatLM <- matrix(nrow = 10000, ncol = 4)
+outMatMS <- matrix(nrow = 10000, ncol = 4)
+
+# Empty matrices for output
+
+for(i in 1:10000){
+  # Random samples of points:
+  swdRandomLS <- randomSWDpair(swdLarge, swdSmall)
+  swdRandomLM <- randomSWDpair(swdLarge, swdMedium)
+  swdRandomMS <- randomSWDpair(swdMedium, swdSmall)
+  # Get models of permuted samples:
+  modLS <- runMaxentAreaPrevalence(swdRandomLS, bestModelLarge, 1)
+  modLM <- runMaxentAreaPrevalence(swdRandomLM, bestModelLarge, 1)
+  modMS <- runMaxentAreaPrevalence(swdRandomMS, bestModelMedium, 1.4)
+  # Save random models:
+  saveLoc <- 'C:/Users/Brian/Dropbox/randomRUBLmodels/'
+  saveRDS(modLS, paste0(saveLoc, 'modLS', i, '.rds'))
+  saveRDS(modLM, paste0(saveLoc, 'modLM', i, '.rds'))
+  saveRDS(modMS, paste0(saveLoc, 'modMS', i, '.rds'))
+  # Get stats output for permutation:
+  outMatLS[i,] <- getAreaPrevalenceFrame(modLS, i)
+  outMatLM[i,] <- getAreaPrevalenceFrame(modLM, i)
+  outMatMS[i,] <- getAreaPrevalenceFrame(modMS, i)
+}
+
+colnames(outMatLS) <- c('iteration', 'prevalence', 'threshold', 'area')
+colnames(outMatLM) <- c('iteration', 'prevalence', 'threshold', 'area')
+colnames(outMatMS) <- c('iteration', 'prevalence', 'threshold', 'area')
+
+permutedLS <- outMatLS %>% data.frame %>% tbl_df %>%
+  mutate(permutation = 'Large-Small')
+permutedLM <- outMatLM %>% data.frame %>% tbl_df %>%
+  mutate(permutation = 'Large-Medium')
+permutedMS <- outMatMS %>% data.frame %>% tbl_df %>%
+  mutate(permutation = 'Medium-Small')
+
+bind_rows(permutedLS, permutedLM, permutedMS) %>%
+  filter(!is.na(iteration))
+
+
+
+
+  
+
+###################################################################
+
 # Next: k-fold for each model for getting error in predictions
 
 runMaxentK <- function(swd, bestModel, betaMultiplier, kFold){
