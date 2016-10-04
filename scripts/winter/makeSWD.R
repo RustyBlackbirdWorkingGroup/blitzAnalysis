@@ -175,7 +175,7 @@ rStack <- loadEnv(paste0(pathToRasterData, 'lc_asc'))
 
 r <- rStack[[1]]
 
-projInfo = projection(r)
+projInfo = raster::projection(r)
 
 # Get rusty blackbird data:
 
@@ -262,8 +262,6 @@ for(i in 1:length(years)){
   samplingSubset <- eBirdSamplingEnv %>%
     dplyr::filter(year == years[i]) %>%
     dplyr::select(cellAddress, year, protocol, count, dev_hi:woodland) %>%
-    # mutate(protocol = ifelse(
-    #   stringr::str_detect(protocol, 'Blitz'), 'blitz', 'eb')) %>%
     group_by(cellAddress, protocol) %>%
     dplyr::mutate(count = max(count)) %>%
     ungroup %>%
@@ -272,34 +270,12 @@ for(i in 1:length(years)){
   pptR <- raster(paste0(pathToRasterData, 'climateRasters/ppt',years[i]))
   tminR <- raster(paste0(pathToRasterData, 'climateRasters/tmin',years[i]))
   # Extract precip and temperature to points (by cell address):
-  samplingSubset$ppt <- raster::extract(pptR, samplingSubset$cellAddress) #cbind(samplingSubset$lon, samplingSubset$lat))
-  samplingSubset$tmin <- raster::extract(tminR, samplingSubset$cellAddress) #cbind(samplingSubset$lon, samplingSubset$lat))
+  samplingSubset$ppt <- raster::extract(pptR, samplingSubset$cellAddress)
+  samplingSubset$tmin <- raster::extract(tminR, samplingSubset$cellAddress)
   # Output list item, removing NA tmin and ppt (outside of extent)
   samplingByYearList[[i]] <- samplingSubset %>%
     dplyr::filter(!is.na(tmin), !is.na(ppt)) #%>%
-#     dplyr::select(-year)
 }
-
-swd <- bind_rows(samplingByYearList)
-# 
-# swd <- do.call('rbind', samplingByYearList) %>%
-#   tbl_df #%>%
-#   dplyr::select(-c(observationID, observer, lat, lon, nObservers, cellAddress)) %>%
-#   mutate(protocol = ifelse(
-#     stringr::str_detect(protocol, 'Blitz'),
-#     'blitz', 'eb'
-#   )) %>%
-#   filter(!is.na(dev_hi))#, !is.na(effortDist))
-
-# swdCombinedFun <- function(flockSizeMin, flockSizeMax){
-#   bind_rows(samplingByYearList) %>%
-#     mutate(
-#       pa = ifelse(count >= flockSizeMin & count <= flockSizeMax, 1,
-#                   ifelse(count > 0, 999, 0))) %>%
-#     filter(pa != 999,
-#            !is.na(dev_hi)) #%>%
-#     # dplyr::select(-c(cellAddress))
-# }
 
 samplingAcrossYears <- bind_rows(samplingByYearList)
 
