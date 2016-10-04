@@ -315,7 +315,7 @@ ggplot(summaryAUC, aes(x = flockSize, y = meanAUC)) +
   theme_bw() +
   ylab('AUC') +
   xlab('Flock size class') +
-  geom_line(size = 1)
+  geom_line(size = 1) + coord_flip()
 
 # Calculate by auc summary stats by observation type:
 
@@ -378,18 +378,27 @@ summaryAUCbyObservationType <- summaryAUC %>%
 # Plot AUC by observation  type output:
 
 dodge <- position_dodge(.4)
+ann_text <- data.frame(mpg = 15,wt = 5,lab = "Text",
+                       cyl = factor(8,levels = c("4","6","8")))
 
-ggplot(summaryAUC1, aes(x = flockSize, y = meanAUC,
-                        color = encounterType)) +
+aucPlot <- ggplot(
+  summaryAUCbyObservationType %>%
+    mutate(
+      encounterType = str_replace_all(encounterType,'All', 'Combined'),
+      encounterType = str_replace_all(encounterType, 'Blitz',
+                                      'Winter Blitz')),
+  aes(x = encounterType, y = meanAUC)) +
   geom_errorbar(aes(ymin=meanAUC - 1.96*seAUC,
                     ymax=meanAUC + 1.96*seAUC), width = 0,
-                position = dodge, size = 1) +#, position=pd)
-  guides(color=guide_legend(title="Encounter type")) +
-  geom_point(size = 3, position = dodge) +
+                size = .75) +
+  geom_point(size = 3) +
   theme_bw() +
   ylab('AUC') +
-  xlab('Flock size class') +
-  geom_line(size = 1)
+  xlab('Observation class') +
+  geom_line(size = 1) +
+  theme(axis.title = element_text(margin=margin(0,10,0,0))) +
+  theme(legend.key = element_blank()) + 
+  facet_grid(flockSize ~ .)
 
 
 #----------------------------------------------------------------------------*
@@ -466,18 +475,48 @@ for(i in 1:5){
 
 rocFrame <- bind_rows(rocList)
 
-ggplot(rocFrame %>%
+rocPlot <- ggplot(rocFrame %>%
          select(fpr, tpr, k) %>%
          mutate(fpr = round(fpr, 4),
                 tpr = round(tpr, 4)) %>%
          distinct, 
        aes(y = tpr, x = fpr,group = k)) +
-  geom_line(size = .8) +
+  geom_line(size = .6) +
   geom_line(data = data.frame(x = seq(0, 1, .5), k = 1), aes(x = x, y = x),
-            linetype = 4, size = .8) +
+            linetype = 4, size = .6) +
   theme_bw() +
   ylab('Sensitivity') +
-  xlab('1 - Specificity (Fractional predicted area)')
+  xlab('1 - Specificity (Fractional predicted area)') +
+  theme(axis.title = element_text(margin=margin(0,10,0,0)))
+
+
+# Plot output:
+
+png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/rocAUC.png",
+    width = 7.5, height = 4, units = 'in', res = 300)
+grid.arrange(
+  arrangeGrob(
+    rocPlot +
+      geom_text(
+        data = data.frame(
+          fpr = 0.05,
+          tpr = .97,
+          k = 1),
+        label = "A)",
+        size = 6), 
+    aucPlot +
+      geom_text(
+        data = data.frame(
+          flockSize = 'Large',
+          encounterType = 3.1,
+          meanAUC = .85),
+        label = "B)",
+        size = 6) +
+      theme(axis.text.y = element_text(size = 6),
+            axis.text.x = element_text(size = 8)),
+    ncol=2, widths=c(1.6,.9))
+)
+dev.off()
 
 
 
@@ -508,6 +547,13 @@ plot(small2009)
 plot(medium2009)
 plot(large2009)
 plot(getLogisticPrediction(bestModelLarge, 2010))
+
+
+#----------------------------------------------------------------------------*
+# ---- Make model predictions (raster maps) ----
+#----------------------------------------------------------------------------*
+
+
 
 #----------------------------------------------------------------------------*
 # ---- Area, prevalence, threshold ----
