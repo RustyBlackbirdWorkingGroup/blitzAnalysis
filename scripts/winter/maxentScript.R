@@ -542,18 +542,7 @@ small2009 <- getLogisticPrediction(bestModelSmall, 2009)
 medium2009 <- getLogisticPrediction(bestModelMedium, 2009)
 large2009 <- getLogisticPrediction(bestModelLarge, 2009)
 
-plot(getLogisticPrediction(bestModelLarge, 2011))
-plot(small2009)
-plot(medium2009)
-plot(large2009)
-plot(getLogisticPrediction(bestModelLarge, 2010))
-
-
-#----------------------------------------------------------------------------*
-# ---- Make model predictions (raster maps) ----
-#----------------------------------------------------------------------------*
-
-
+# To plot these, go to script plotSuitabilityMaps.R
 
 #----------------------------------------------------------------------------*
 # ---- Area, prevalence, threshold ----
