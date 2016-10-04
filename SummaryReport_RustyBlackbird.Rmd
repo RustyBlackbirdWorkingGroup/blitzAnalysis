@@ -29,6 +29,10 @@ To evaluate models, we assessed the area under the receiver operator curve (ROC,
 
 ## 2. Habitat suitability for small, medium, and large flocks of Rusty Blackbirds
 
+Winter suitabilility maps generated for each flock size class (Fig. 2) show potential hotspots in the southern Mississippi River Basin, the Blackbelt region of Alabama and Mississippi, and the coastal plains of the southeastern states. Note that the predicted suitability appears to decrease with increasing flock size (formally tested in Number 4, below). Surprisingly, the Piedmont region of the southeastern states appears to be of moderate suitability for large flocks, however, low sample sizes for this flock size class mean that some samples (e.g., an observation in Piedmont forest) may have a strong effect on habitat suitability estimates.
+
+![Winter prediction maps for small medium, and large flock size classes across observation methods.](C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/mapOut_10-2-2016.png)
+
 ## 3. The contribution of environmental variables to habitat suitability 
 
 To determine which environmental variables best predict Rusty Blackbird distributions for each flock size class, we compared the contribution of each variable to model performance after calibrating models (see above). To assess differences in Rusty Blackbird's environmental distribution across flock size classes, we compared prevalence (i.e., the average predicted suitability for each map pixel), predicted area 
