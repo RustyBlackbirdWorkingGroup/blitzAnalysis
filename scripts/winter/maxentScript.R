@@ -6,6 +6,7 @@
 
 library(dplyr) ; library(tidyr); library(stringr)
 library(sp) ; library(raster) ; library(dismo) 
+library(ggplot2)
 
 # IMPORTANT! Prior to running, run the file "makeSWD.R"
 
@@ -518,8 +519,6 @@ grid.arrange(
 )
 dev.off()
 
-
-
 #----------------------------------------------------------------------------*
 # ---- Make model predictions (raster maps) ----
 #----------------------------------------------------------------------------*
@@ -592,11 +591,10 @@ getAreaPrevalenceFrame <- function(model, i){
       stat = ifelse(str_detect(stat, 'logistic'), 'threshold', stat),
       stat = ifelse(str_detect(stat, 'area'), 'area', stat)
       ) %>%
-    spread(stat, value) %>%
-    as.matrix
+    spread(stat, value)
 }
 
-# Generate a random sample of flock size 1 by flock size 2
+# Function to generate a random sample of flock size 1 by flock size 2
 # Note: Flock size 1 is the flocks size of interest, comparison to flock size 2
 
 randomSWDpair <- function(swd1, swd2){
@@ -613,12 +611,7 @@ randomSWDpair <- function(swd1, swd2){
     dplyr:: bind_rows(bgPoints)
 }
 
-
-# Empty matrices for model results:
-
-outMatLS <- matrix(nrow = 10000, ncol = 4)
-outMatLM <- matrix(nrow = 10000, ncol = 4)
-outMatMS <- matrix(nrow = 10000, ncol = 4)
+# Make random prediction models. Because the result will be large, save as RDS rather than store in memory:
 
 # Empty matrices for output
 
@@ -636,30 +629,157 @@ for(i in 1:10000){
   saveRDS(modLS, paste0(saveLoc, 'modLS', i, '.rds'))
   saveRDS(modLM, paste0(saveLoc, 'modLM', i, '.rds'))
   saveRDS(modMS, paste0(saveLoc, 'modMS', i, '.rds'))
-  # Get stats output for permutation:
-  outMatLS[i,] <- getAreaPrevalenceFrame(modLS, i)
-  outMatLM[i,] <- getAreaPrevalenceFrame(modLM, i)
-  outMatMS[i,] <- getAreaPrevalenceFrame(modMS, i)
 }
 
-colnames(outMatLS) <- c('iteration', 'prevalence', 'threshold', 'area')
-colnames(outMatLM) <- c('iteration', 'prevalence', 'threshold', 'area')
-colnames(outMatMS) <- c('iteration', 'prevalence', 'threshold', 'area')
+# Read in rds files, and fill matrices:
 
-permutedLS <- outMatLS %>% data.frame %>% tbl_df %>%
-  mutate(permutation = 'Large-Small')
-permutedLM <- outMatLM %>% data.frame %>% tbl_df %>%
-  mutate(permutation = 'Large-Medium')
-permutedMS <- outMatMS %>% data.frame %>% tbl_df %>%
-  mutate(permutation = 'Medium-Small')
-
-bind_rows(permutedLS, permutedLM, permutedMS) %>%
-  filter(!is.na(iteration))
+# RDSlocation <- 'C:/Users/Brian/Dropbox/randomRUBLmodels'
 
 
+modCombos <- c('modLS', 'modLM','modMS')
+
+outList <- vector('list', length = 3)
+
+for(i in 1:length(outList)){
+  rdsFilepaths <- list.files(RDSlocation, pattern = modCombos[i], full.names = TRUE)
+  subOutList <- vector('list', length = length(rdsFilepaths))
+  for(j in 1:length(rdsFilepaths)){
+    subOutList[[j]] <- readRDS(rdsFilepaths[j]) %>%
+      getAreaPrevalenceFrame(j) %>%
+      data.frame %>%
+      dplyr::mutate(permuted = modCombos[i])
+  }
+  outList[[i]] <- bind_rows(subOutList)
+}
+
+permutationFrame <- bind_rows(outList)
+
+cbPallete <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
+                        "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+cbPallete <- c("#E69F00", "#009E73",
+               "#0072B2", "#D55E00", "#CC79A7")
+
+# Predicted area plots
+
+predictedAreaLFplot <- ggplot(permutationFrame %>%
+         mutate(
+           permuted = str_replace(permuted, 'modLM', 'Large-Medium'),
+           permuted = str_replace(permuted, 'modLS', 'Large-Small'),
+           permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
+           Permutation = permuted
+           ) %>%
+         filter(permuted != 'Medium-Small'),
+       aes(x=area)) + 
+  geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
+  scale_fill_manual(values = cbPallete) +
+  geom_segment(data = getAreaPrevalenceFrame(bestModelLarge,1),
+               aes(x = area, xend = area, y = 0, yend = 35),
+               size = 2, linetype = 1, lineend = 'round') +
+  theme_bw() +
+  labs(x = 'Fractional predicted area',
+       y = 'Density') +
+  theme(
+    axis.title = element_text(size = 15)
+  ) +
+  xlim(.15, .4) +
+  ylim(0, 38)
+
+
+predictedAreaMFplot <- ggplot(permutationFrame %>%
+                                mutate(
+                                  permuted = str_replace(permuted, 'modLM', 'Medium-Large'),
+                                  permuted = str_replace(permuted, 'modLS', 'Large-Small'),
+                                  permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
+                                  Permutation = permuted
+                                ) %>%
+                                filter(permuted != 'Large-Small'),
+                              aes(x=area)) + 
+  geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
+  scale_fill_manual(values = cbPallete[-c(1:2)]) +
+  geom_segment(data = getAreaPrevalenceFrame(bestModelMedium,1),
+               aes(x = area, xend = area, y = 0, yend = 35),
+               size = 1.5, linetype = 1, lineend = 'round') +
+  theme_bw() +
+  labs(x = 'Fractional predicted area',
+       y = 'Density') +
+  theme(
+    axis.title = element_text(size = 15)
+  ) +
+  xlim(.15, .4) +
+  ylim(0, 38)
+
+# Predicted prevalence plots
+
+predictedPrevalenceLFplot <- ggplot(permutationFrame %>%
+                                mutate(
+                                  permuted = str_replace(permuted, 'modLM', 'Large-Medium'),
+                                  permuted = str_replace(permuted, 'modLS', 'Large-Small'),
+                                  permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
+                                  Permutation = permuted
+                                ) %>%
+                                filter(permuted != 'Medium-Small'),
+                              aes(x=prevalence)) + 
+  geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
+  scale_fill_manual(values = cbPallete) +
+  geom_segment(data = getAreaPrevalenceFrame(bestModelLarge,1),
+               aes(x = prevalence, xend = prevalence, y = 0, yend = 35),
+               size = 1.5, linetype = 1, lineend = 'round') +
+  theme_bw() +
+  labs(x = 'Prevalence',
+       y = 'Density') +
+  theme(
+    axis.title = element_text(size = 15)
+  ) +
+  xlim(.15, .4) +
+  ylim(0, 38)
+
+
+predictedPrevalenceMFplot <- ggplot(permutationFrame %>%
+                                mutate(
+                                  permuted = str_replace(permuted, 'modLM', 'Medium-Large'),
+                                  permuted = str_replace(permuted, 'modLS', 'Large-Small'),
+                                  permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
+                                  Permutation = permuted
+                                ) %>%
+                                filter(permuted != 'Large-Small'),
+                              aes(x=prevalence)) + 
+  geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
+  scale_fill_manual(values = cbPallete[-c(1:2)]) +
+  geom_segment(data = getAreaPrevalenceFrame(bestModelMedium,1),
+               aes(x = prevalence, xend = prevalence, y = 0, yend = 35),
+               size = 1.5, linetype = 1, lineend = 'round') +
+  theme_bw() +
+  labs(x = 'Prevalence',
+       y = 'Density') +
+  theme(
+    axis.title = element_text(size = 15)
+  ) +
+  xlim(.15, .4) +
+  ylim(0, 38)
 
 
   
+# library(gridExtra)
+png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/areaPrevalence.png",
+    width = 12, height = 4.5, units = 'in', res = 300)
+grid.arrange(
+  arrangeGrob(
+    predictedPrevalenceLFplot + guides(fill = FALSE) +
+      geom_text(aes(x = .38, y = 28), label = 'Large\nflocks', size = 5) +
+      geom_text(aes(x = .15, y = 35), label = 'A)', size = 5),
+    predictedAreaLFplot  +
+      geom_text(aes(x = .38, y = 28), label = 'Large\nflocks', size = 5) +
+      geom_text(aes(x = .15, y = 35), label = 'B)', size = 5),
+    predictedPrevalenceMFplot + guides(fill = FALSE) +
+      geom_text(aes(x = .38, y = 28), label = 'Medium\nflocks', size = 5) +
+      geom_text(aes(x = .15, y = 35), label = 'A)', size = 5),
+    predictedAreaMFplot +
+      geom_text(aes(x = .38, y = 28), label = 'Medium\nflocks', size = 5) +
+      geom_text(aes(x = .15, y = 35), label = 'B)', size = 5), ncol=2)
+    )
+dev.off()
+
 
 ###################################################################
 
