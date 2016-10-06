@@ -523,23 +523,29 @@ dev.off()
 # ---- Make model predictions (raster maps) ----
 #----------------------------------------------------------------------------*
 
-# For a given best model and year make logistic prediction:
+# Get environmental rasters for a given year:
 
-getLogisticPrediction <- function(bestModel, year){
+getRstack <- function(year){
   # Add tmin and ppt for a given year:
   rStack[['tmin']] <- raster(paste0(pathToRasterData, 'climateRasters/tmin',year))
   rStack[['tmin2']] <- rStack[['tmin']]^2
   rStack[['ppt']] <-  raster(paste0(pathToRasterData, 'climateRasters/tmin',year))
-  # Predict based on best model:
-  outRaster <- predict(bestModel,rStack,
-          args='outputformat=logistic', 
-          progress='text')
-  return(outRaster)
+  return(rStack)
 }
 
-small2009 <- getLogisticPrediction(bestModelSmall, 2009)
-medium2009 <- getLogisticPrediction(bestModelMedium, 2009)
-large2009 <- getLogisticPrediction(bestModelLarge, 2009)
+# For a given best model and year make logistic prediction:
+
+getLogisticPrediction <- function(bestModel, rasterStack){
+  predict(bestModel, rasterStack,
+          args='outputformat=logistic', 
+          progress='text')
+}
+
+rStack2009 <- getRstack(2009)
+
+small2009 <- getLogisticPrediction(bestModelSmall, rStack2009)
+medium2009 <- getLogisticPrediction(bestModelMedium, rStack2009)
+large2009 <- getLogisticPrediction(bestModelLarge, rStack2009)
 
 # To plot these, go to script plotSuitabilityMaps.R
 
@@ -1127,11 +1133,11 @@ maxentEvaluate <- function(observationClass, flockSizeClass, kFold, beta.multipl
   testPresence <- swdTest %>%
     dplyr::filter(sp == 1) %>%
     dplyr::select(-c(sp,lon, lat,k)) # select(lon, lat)%>% 
-  #SpatialPoints(proj4string = CRS(projection(env.stack)))
+  #SpatialPoints(proj4string = CRS(projection(rStack2009)))
   testAbsence <- swdTest %>%
     dplyr::filter(sp == 0) %>%
     dplyr::select(-c(sp,lon, lat,k)) # select(lon, lat)%>%%>%
-  #SpatialPoints(proj4string = CRS(projection(env.stack)))
+  #SpatialPoints(proj4string = CRS(projection(rStack2009)))
   modelEvaluation <- evaluate(testPresence, testAbsence, maxentModel)
   return(list(maxentModel = maxentModel, modelEvaluation = modelEvaluation,
               swd = maxentModelOut$swd, swdTest = swdTest))
@@ -1228,7 +1234,7 @@ lambdaContributionFrame_allLfOut <- makeLambdaContributionFrame(allLfOut)
 prob.r.stack = function(model, outformat){
   r = stack()
   for (i in 1:5){
-    r1 = predict(model[[1]][[i]][[1]],env.stack,
+    r1 = predict(model[[1]][[i]][[1]],rStack2009,
                  args=c(paste('outputformat=',outformat, sep = '')), 
                  progress='text')
     r = stack(r, r1)
@@ -1285,7 +1291,7 @@ maxentRunRawPlot = function(inFlockData, beta.multiplier = 0){
                 'maximumiterations=10000', 'verbose')
   # Run maxent model with training and background data:
   maxentModel <- maxent(max.in[,-1], max.in[,1], args = mod.args)
-  return(predict(maxentModel, env.stack, args = c('outputformat=raw')))
+  return(predict(maxentModel, rStack2009, args = c('outputformat=raw')))
 }
 
 # Run models of empirical data:
@@ -1504,8 +1510,8 @@ hist.mhd(I.sf.ind, 'Medium flock vs. small flock sightings', 'mh_dist_sf_ind.jpg
 
 pno.df <- function(mod.x, mod.y, env.var){
   # Sum the raw probabilities about a given value of an environmental variable:
-  pno.df <- data.frame(zonal(mod.x,env.stack[[env.var]],'sum', digits = 2))
-  pno.df[,3] <- zonal(mod.y,env.stack[[env.var]],'sum', digits = 2)[,2]
+  pno.df <- data.frame(zonal(mod.x,rStack2009[[env.var]],'sum', digits = 2))
+  pno.df[,3] <- zonal(mod.y,rStack2009[[env.var]],'sum', digits = 2)[,2]
   colnames(pno.df) <- c('env','pno.sp1','pno.sp2')
   pno.df
 }
@@ -1590,9 +1596,9 @@ for(j in 1:15){
 #   pno.sf.ind[[i]] = run.pno(sf, ind, n.sf.ind, n.ind.sf,i)
 # }
 
-names(pno.lf.sf) = names(env.stack)
-names(pno.lf.ind) = names(env.stack)
-names(pno.sf.ind) = names(env.stack)
+names(pno.lf.sf) = names(rStack2009)
+names(pno.lf.ind) = names(rStack2009)
+names(pno.sf.ind) = names(rStack2009)
 
 
 saveRDS(pno.lf.sf, 'pno.lf.sf.rds')
@@ -1622,7 +1628,7 @@ out.pno.stats = function(pno.sp1.sp2){
   for (i in 1:15){
     pno.out[[i]] = pno.stats(pno.sp1.sp2[[i]])
   }
-  names(pno.out) = names(env.stack)
+  names(pno.out) = names(rStack2009)
   pno.out
 }
 
@@ -1636,7 +1642,7 @@ out.pno.sf.ind = out.pno.stats(pno.sf.ind)
 
 pno.lf.ind[['dev_hi']][[1]][,3]
 
-names(env.stack)[env]
+names(rStack2009)[env]
 
 plot.pno = function(env) {
   df = pno.lf.sf[[env]][[1]]
@@ -1645,7 +1651,7 @@ plot.pno = function(env) {
   lf = df[,2]
   sf = df[,3]
   plot(lf~env, type = 'l', xlim = c(0,1), lwd =2, bty ='l',
-       main = names(env.stack[[env]]), ylab = 'PNO')
+       main = names(rStack2009[[env]]), ylab = 'PNO')
   lines(env, sf, lty = 2, lwd = 2)
   lines(env, ind, lty = 3, lwd = 2)
 }
@@ -1660,7 +1666,7 @@ plot.pno = function(env) {
   lf = df[,2]
   sf = df[,3]
   plot(lf~lc, type = 'l', xlim = c(0,1), lwd =2, bty ='l',
-       main = names(env.stack)[env], ylab = 'PNO')
+       main = names(rStack2009)[env], ylab = 'PNO')
   lines(lc, sf, lty = 2, lwd = 2)
   lines(lc, ind, lty = 3, lwd = 2)
 }
