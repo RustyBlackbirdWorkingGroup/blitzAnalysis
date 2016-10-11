@@ -363,7 +363,9 @@ prepSWD <- function(swdIn, minFlockSize, maxFlockSize, samplingPeriodValue){
                      1, 0)
     ) %>%
     dplyr::select(pa, dev_hi:tmin) %>%
-    mutate(tmin2 = tmin^2)
+    mutate(tmin2 = tmin^2) %>%
+    mutate(k = dismo::kfold(x = pa, k = 5, by = pa)) %>%
+    data.frame
 }
   
   
