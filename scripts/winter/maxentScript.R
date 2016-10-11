@@ -2,13 +2,23 @@
 # ---- SET-UP ----
 #===================================================================================================*
 
-# Load libraries:
+smartInstallAndLoad <- function(packageVector){
+  for(i in 1:length(packageVector)){
+    package <- packageVector[i]
+    if(!package %in% rownames(installed.packages())){
+      install.packages(packageVector[i],repos="http://cran.rstudio.com/", dependencies=TRUE)
+    }
+  }
+  lapply(packageVector, library, character.only = TRUE)
+}
 
-library(dplyr) ; library(tidyr); library(stringr)
-library(sp) ; library(raster) ; library(dismo) 
-library(ggplot2)
+# Load and potentially install libraries:
 
-# IMPORTANT! Prior to running, run the file "makeSWD.R"
+smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
+                      'lubridate','raster', 'dismo', 'ggplot2'))
+
+# IMPORTANT! Prior to running the below, run the file "makeSWD.R"
+# Also, in order to run this script, you need to place the maxent jar file in the folder: win-library/[version]/dismo/java
 
 #----------------------------------------------------------------------------*
 # Basic functions:
