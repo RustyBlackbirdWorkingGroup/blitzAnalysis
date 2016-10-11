@@ -8,7 +8,11 @@ output:
 ---
 
 ```{r, echo=FALSE}
-setwd('/Users/bsevans/Desktop/gits/blitzAnalysis')
+# setwd('/Users/bsevans/Desktop/gits/blitzAnalysis') # macbook
+pathToImages <- 'C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/' # desktop
+readImages <- function(imageFile){
+  imagePath <- paste0(pathToImages, imageFile)
+}
 ```
 
 # Project goals
@@ -19,7 +23,7 @@ Rare and declining species present an extraordinary challenge for conservation b
 
 Assessment of habitat suitability for winter and spring blitz periods required several processing steps, including: processing bird observation data, processing of land cover and climatic data, model development and calibration, model evaluation, and statistical interpretation of models. Because habitat suitability predictions and their interpretation are highly dependent on model construction and implementation, below I provide a brief overview of each of the steps.
 
-* **Processing bird observation data**: Observations from the Spring and Winter Blitz as well as from the larger eBird database were used throughout this analysis. To ensure that collection of eBird and Blitz observations used similar protocols, eBird data were subset such that only traveling counts were considered for this analysis. Because the spatial extent of a study area can bias suitability models and large extents can lead to exaggerated measures model performance, observations were subset to those within the 99th percentile spatial distribution of Rusty Blackbird Observations. Observation data were grouped into sampling periods, with Winter Blitz observations grouped by year and Spring Blitz observations grouped into two-week intervals for each year. To maximize independence of samples (i.e., to avoid double-counting individuals) observations were aggregated to a 4 km resolution grid (see below), with grid cells representing the maximum count of Rusty Blackbirds during each sampling period. Finally, because the collection of eBird data is biased towards certain environments (e.g., warmer temperatures and close to human development), we evaluated habitat suitability of presence locations relative to locations in which eBird lists did not contain Rusty Blackbird observations. 
+* **Processing bird observation data**: Observations from the Spring and Winter Blitz as well as from the larger eBird database were used throughout this analysis. To ensure that collection of eBird and Blitz observations used similar protocols, eBird data were subset such that only traveling counts were considered for this analysis (total lists, Rusty Blackbird: Winter Blitz = 678; winter eBird = 1,429; Spring Blitz = 4,028; spring eBird = 24,561). Because the spatial extent of a study area can bias suitability models and large extents can lead to exaggerated measures model performance, observations were subset to those within the 99th percentile spatial distribution of Rusty Blackbird Observations. Observation data were grouped into sampling periods, with Winter Blitz observations grouped by year and Spring Blitz observations grouped into two-week intervals for each year. To maximize independence of samples (i.e., to avoid double-counting individuals) observations were aggregated to a 4 km resolution grid (see below), with grid cells representing the maximum count of Rusty Blackbirds during each sampling period. Finally, because the collection of eBird data is biased towards certain environments (e.g., warmer temperatures and close to human development), we evaluated habitat suitability of presence locations relative to locations in which eBird lists did not contain Rusty Blackbird observations. 
 
 * **Processing land cover and climatic data**: Land cover data were obtained from the USGS National Gap Analysis Program (http://gapanalysis.usgs.gov). These data are provided at a resolution of 30 m with classification of land cover in natural areas dependent on the plant community present at a given site. Land cover data were re-classified to habitat types expected to be predictive of Rusty Blackbird distribution. For each land cover type, we then aggregated the proportional cover to a resolution of 4 km, a spatial resolution thought to be representative of the spatial habitat use by wintering Rusty Blackbirds. Climatic data were obtained from the PRISM Climate Group (http://prism.oregonstate.edu/) and included average daily precipitation and minimum daily temperatures at a resolution of 4 km. Precipitation for winter and spring migration analyses was evaluated as the mean daily precipitation across each sampling period (i.e., 1 Jan - 14 Feb 2009-2011; 1 Mar - 5 May 2014-2016 -- _Note: sampling continues after the fifth of May but the sample size was not high enough during this period to construct suitability models_). For the winter analysis, we calculated the average minimum temperature across the period for each year in the study, whereas for the spring analysis we determined the minimum temperature associated with each bird observation. After processing, land cover and climatic data were extracted to bird observation locations.
 
@@ -39,7 +43,7 @@ Overall, spring models had better performance than winter models (Fig. 2), with 
 
 
 ```{r, out.width = '750px',out.height = '250px', echo = F, fig.align = 'right', fig.cap='test'}
-knitr::include_graphics("outPlots/placeHolderNicheWidth.png")
+# knitr::include_graphics("outPlots/placeHolderNicheWidth.png")
 ```
 
 
