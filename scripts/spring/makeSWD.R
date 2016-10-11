@@ -354,15 +354,15 @@ springSWDfull <- bind_rows(outList) %>%
 
 # Function to prepare samples with data for model running:
 
-prepSWD <- function(swdIn, minFlockSize, maxFlockSize, samplingPeriod){
+prepSWD <- function(swdIn, minFlockSize, maxFlockSize, samplingPeriodValue){
   swdIn %>%
     dplyr::filter(!(count > 0 & count < minFlockSize),
-                  samplingPeriod == samplingPeriod) %>%
+                  samplingPeriod == samplingPeriodValue) %>%
     mutate(
       pa = ifelse(count >= minFlockSize & count <= maxFlockSize,
                      1, 0)
     ) %>%
-    select(pa, dev_hi::tmin) %>%
+    dplyr::select(pa, dev_hi:tmin) %>%
     mutate(tmin2 = tmin^2)
 }
   
