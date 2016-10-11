@@ -1,15 +1,27 @@
 # Summarize point data by raster cell
 
+#===================================================================================================*
+# ---- SET-UP ----
+#===================================================================================================*
+
+smartInstallAndLoad <- function(packageVector){
+  for(i in 1:length(packageVector)){
+    package <- packageVector[i]
+    if(!package %in% rownames(installed.packages())){
+      install.packages(packageVector[i],repos="http://cran.rstudio.com/", dependencies=TRUE)
+    }
+  }
+  lapply(packageVector, library, character.only = TRUE)
+}
+
+# Load and potentially install libraries:
+
+smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
+                    'lubridate', 'raster', 'dismo', 'ggplot2'))
 
 # note: 
 # setwd('C:/Users/Brian/Desktop/gits/RUBL/rubl_winter/') # Helm
 # setwd('C:/Users/Default.Default-THINK/Desktop/gits/RUBL/rubl_winter') # Thinkpad
-
-library(sp)
-library(raster)
-library(dplyr)
-library(stringr)
-library(dismo)
 
 options(stringsAsFactors = FALSE)
 
