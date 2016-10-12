@@ -162,97 +162,9 @@ downloadPPTRaster <- function(year, month, day){
 # downloadTminRaster(year = '2016', month = '03', day = '15')
 # downloadPPTRaster(year = '2016', month = '03', day = '15')
 
-#===================================================================================================*
-# ---- PREPARE BIRD OBSERVATIONS ----
-#===================================================================================================*
 
 #---------------------------------------------------------------------------------------------------*
-# ---- GET LIST DATA FOR RUSTY AND BACKGROUND POINTS ----
-#---------------------------------------------------------------------------------------------------*
-
-# Rusty observations:
-
-rustyListsSpring <- read.csv('rublEbird.csv') %>%
-  tbl_df %>%
-  # Filter to study extent:
-    filter(lon > extent(r)[1] & lon < extent(r)[2],
-         lat > extent(r)[3] & lat < extent(r)[4]) %>%
-  # Subset to dates associated with the spring blitz:
-  mutate(date = as.Date(date)) %>%
-  mutate(month = lubridate::month(date),
-         day = lubridate::day(date)) %>%
-  dplyr::filter(
-    year(date) > 2013,
-    month >= 3 & month < 6,
-    !(month == 5 & day > 10)
-  ) %>%
-  dplyr::select(-c(month, day)) %>%
-  # Remove counts recorded as 'X':
-  filter(count != 'X') %>%
-  mutate(count = as.numeric(count))
-
-# Make a vector of rusty lists where count is recorded as 'X':
-
-rustyXobservations <- read.csv('rublEbird.csv') %>%
-  filter(count == 'X') %>%
-  .$observationID
-
-# Get eBird list data:
-
-eBirdListsSpring <- read.csv(pathToEbirdListData) %>%
-  tbl_df %>%
-  # Filter to the study extent:
-  filter(lon > extent(r)[1] & lon < extent(r)[2],
-         lat > extent(r)[3] & lat < extent(r)[4]) %>%
-  # Subset lists to only dates associated with the rusty observations:
-  filter(date %in%
-           (rustyListsSpring$date %>% 
-              unique %>% 
-              as.character)) %>%
-  # Remove observationIDs where rusty count was reported as X:
-  filter(!observationID %in% rustyXobservations) %>%
-  # Add count data:
-  left_join(rustyListsSpring %>%
-              dplyr::select(observationID, count),
-            by = 'observationID') %>%
-  # Change na counts (no observation match) to 0:
-  mutate(count = ifelse(is.na(count), 0, count))
-
-# Add cell addresses:
-
-eBirdListsSpring$cellAddress <- cellFromXY(
-  r,
-  eBirdListsSpring %>%
-    dplyr::select(lon, lat) %>%
-    data.frame %>%
-    SpatialPoints(proj4string = CRS(projInfo)) 
-)
-
-# Extract raster land cover data by cell ID:
-
-envByCell <- data.frame(
-  cellAddress = (eBirdListsSpring$cellAddress %>% unique),
-  raster::extract(
-    x = rStack,
-    y = (eBirdListsSpring$cellAddress %>% unique),
-    df = TRUE)
-) %>%
-  tbl_df %>%
-  dplyr::select(-c(ID, tmin, ppt))
-
-# Join sampling data to environment data and add year field:
-
-eBirdSamplingEnvSpring <- left_join(
-  eBirdListsSpring,
-  envByCell,
-  by = 'cellAddress'
-) %>%
-  mutate(date = as.Date(date),
-         year = lubridate::year(date)) %>%
-  filter(year %in% 2014:2016)
-
-#---------------------------------------------------------------------------------------------------*
-# ---- ADD CLIMATE DATA TO POINTS ----
+# ----  FUNCTIONS TO GENERATE PPT AND TMIN RASTERS FOR A GIVEN SAMPLING PERIOD ----
 #---------------------------------------------------------------------------------------------------*
 
 # Function to load and prepare climate data:
@@ -278,97 +190,224 @@ rasterPrepTminPpt <- function(rasterDirTmin, rasterDirPPt, date){
   return(tminPptStack)
 }
 
-# Function to extract tmin, ppt to points and add the columns to the swd file:
+# Get a data frame of dates associated with each period and year:
 
-extractClimateByDate <- function(rasterDirTmin, rasterDirPPt, dateValue, ptFile){
-  # Prepare point file:
-  pts <- ptFile %>%
-    mutate(date = as.character(date)) %>%
-    filter(date == dateValue) %>%
-    as.data.frame
-  spPts <- SpatialPointsDataFrame(coords = pts[,c('lon','lat')],
-                                  data = pts,
-                                  proj4string = CRS(projInfo))
-  # Get raster file:
-  rasterStack <- rasterPrepTminPpt(rasterDirTmin, rasterDirPPt, dateValue)
-  # Extract To pts
-  ptsEnv <- raster::extract(rasterStack, spPts)
-  ptsEnv <- cbind(spPts@data, ptsEnv) %>%
-    filter(!is.na(tmin))
-  return(ptsEnv)
+periodStarts <- c('03-01', '03-15', '03-29', '04-12', '04-26')
+years <- 2014:2016
+
+outList <- vector('list', length = 3)
+for(i in 1:length(years)){
+  periodStartDates <- paste(years[i], periodStarts, sep = '-')
+  periodList <- vector('list', length = 5)
+  for(j in 1:length(periodStarts)){
+    periodStart <- as.Date(periodStartDates[j])
+    periodList[[j]] <- data.frame(
+      samplingPeriod = j,
+      date = c(periodStart, periodStart + days(1:13))
+    )
+  }
+  outList[[i]] <- bind_rows(periodList) %>%
+    mutate(year = years[i])
 }
 
-# Get unique vector of dates:
+periodDates <- bind_rows(outList)
+  
+# Function to get summary climate data for a given period and year:
 
-dateValues <- eBirdSamplingEnvSpring %>% .$date %>% unique 
-
-# Make an empty list to store the data:
-
-outList <- vector('list', length = length(dateValues))
-
-# For loop to extract the rasters for a given date (may take a while to run):
-
-for(i in 1:length(dateValues)){
-  outList[[i]] <- extractClimateByDate(
-    rasterDirTmin,
-    rasterDirPPt,
-    dateValues[i],
-    eBirdSamplingEnvSpring
-  )
+summarizeClimate <- function(rasterDirTmin, rasterDirPPt, periodValue, yearValue){
+  dateValues <- periodDates %>%
+    filter(year == yearValue,
+           samplingPeriod == periodValue) %>%
+    .$date
+  # Get list of tmin and ppt rasters for each date:
+  tminList <- vector('list', length = length(dateValues))
+  pptList <- vector('list', length = length(dateValues))
+  for(i in 1:length(dateValues)){
+    tminList[[i]] <- raster(paste0(rasterDirTmin, dateValues[i])) %>%
+      crop(r)
+    pptList[[i]] <-  raster(paste0(rasterDirPPt, dateValues[i])) %>%
+      crop(r)
+  }
+  # Calculate the minimum (mintemp) and summed precipitation across the period:
+  tminR <- min(stack(tminList))
+  pptR <- sum(stack(pptList))
+  # Return stack, with tmin2
+  outStack <- stack(list(ppt = pptR, tmin = tminR, tmin2 = tminR^2))
+  return(outStack)
 }
 
-# Make samples with data for spring, across sampling periods:
+#===================================================================================================*
+# ---- PREPARE BIRD OBSERVATIONS ----
+#===================================================================================================*
 
-springSWDfull <- bind_rows(outList) %>%
+# Function to match date with period:
+
+periodDateMatch <- function(periodDateValue){
+  periodDates %>%
+    dplyr::filter(dates == periodDateValue) %>%
+    .$period
+}
+
+#---------------------------------------------------------------------------------------------------*
+# ---- PREPARE SAMPLING DATA ----
+#---------------------------------------------------------------------------------------------------*
+
+# Rusty observations:
+
+rustyListsSpring <- read.csv('rublEbird.csv') %>%
   tbl_df %>%
-  dplyr::mutate(
-    month = lubridate::month(date),
-    day = lubridate::day(date),
-    year = lubridate::year(date),
-    # Set sampling periods:
-    samplingPeriod = ifelse(
-      # Sampling period 1: March 1 - 15
-      month == 3 & day <= 15, 1,
-      ifelse(
-        # Sampling period 2: March 16 - 29
-        month == 3 & day <= 29, 2,
-        # Sampling period 3: March 30 - April 12
-        ifelse(
-          month == 3|(month == 4 & day <= 12), 3,
-               ifelse(
-                 # Sampling period 4: April 13 - April 26
-                 month == 4 & day <= 26, 4,
-                 # Sampling period 5
-                 ifelse(month == 4|month == 5 & day <= 10,
-                 5, NA)))))
-  ) %>%
+  #dplyr::filter to study extent:
+   dplyr::filter(lon > extent(r)[1] & lon < extent(r)[2],
+         lat > extent(r)[3] & lat < extent(r)[4]) %>%
+  # Subset to dates associated with the spring blitz:
+#   mutate(date = as.Date(date)) %>%
+#   filter(date %in% periodDates$dates) %>%
+#   mutate(month = lubridate::month(date),
+#          day = lubridate::day(date)) %>%
+  # Remove counts recorded as 'X':
+ dplyr::filter(count != 'X') %>%
+  mutate(count = as.numeric(count)) %>%
+  dplyr::select(observationID, count)
+
+# Make a vector of rusty lists where count is recorded as 'X':
+
+rustyXobservations <- read.csv('rublEbird.csv') %>%
+ dplyr::filter(count == 'X') %>%
+  .$observationID
+
+# Get eBird list data:
+
+eBirdListsSpring <- read.csv(pathToEbirdListData) %>%
+  dplyr::select(observationID, lat, lon, date) %>%
+  tbl_df %>%
+  #dplyr::filter to the study extent and study dates:
+  dplyr::filter(lon > extent(r)[1] & lon < extent(r)[2],
+                lat > extent(r)[3] & lat < extent(r)[4]) %>% #,
+#                 lubridate::year(date) %in% 2014:2016,
+#                 lubridate::month(date) %in% 3:5) %>%
+  # mutate(date = as.Date(date)) %>%
+  # filter(as.Date(date) %in% periodDates$dates) %>%
+  mutate(year = lubridate::year(date)) %>%
+#   mutate(samplingPeriod = periodDateMatch(as.Date(date))) %>%
+  # Remove observationIDs where rusty count was reported as X:
+  dplyr::filter(!observationID %in% rustyXobservations) %>%
+  # Add count data:
+  left_join(rustyListsSpring, by = 'observationID') %>%
+  # Change na counts (no observation match) to 0:
+  mutate(count = ifelse(is.na(count), 0, count)) %>%
+  # Add period data:
+  inner_join(periodDates %>%
+               dplyr::select(-year) %>%
+               mutate(date = as.character(date)), by = 'date')
+
+# Add cell addresses:
+
+eBirdListsSpring$cellAddress <- cellFromXY(
+  r,
+  eBirdListsSpring %>%
+    dplyr::select(lon, lat) %>%
+    data.frame %>%
+    SpatialPoints(proj4string = CRS(projInfo)) 
+)
+
+# Summarize:
+
+springSampling <- eBirdListsSpring %>%
   group_by(cellAddress, year, samplingPeriod) %>%
-  mutate(count = max(count),
-            tmin = mean(tmin),
-            ppt = mean(ppt)) %>%
-  ungroup %>%
-  dplyr::select(cellAddress, count, year, 
-                samplingPeriod, dev_hi:woodland, ppt, tmin) %>%
-  distinct %>%
-  dplyr::select(-cellAddress)
+  summarize(count = max(count)) %>%
+  ungroup
+
+#---------------------------------------------------------------------------------------------------*
+# ---- ADD LAND COVER AND CLIMATE DATA (MAKE SWD) ----
+#---------------------------------------------------------------------------------------------------*
+
+# Extract raster land cover data by cell ID:
+
+envByCell <- data.frame(
+  cellAddress = (springSampling$cellAddress %>% unique),
+  raster::extract(
+    x = rStack,
+    y = (springSampling$cellAddress %>% unique),
+    df = TRUE)
+) %>%
+  tbl_df %>%
+  dplyr::select(-ID)
+
+# Join sampling data to environment data and add year field:
+
+samplingEnvSpring <- left_join(
+  springSampling,
+  envByCell,
+  by = 'cellAddress') %>%
+  dplyr::filter(!is.na(dev_hi))
+
+# Function to extract precip and tmin data for a given cell:
+
+samplingWithClimateFun <- function(rasterDirTmin, rasterDirPPt, periodValue, yearValue){
+  # Filter sampling frame to period and year:
+  samplingSubset <- samplingEnvSpring %>%
+    filter(year == yearValue & samplingPeriod == periodValue)
+  # Get raster summary data:
+  climateStack <- summarizeClimate(rasterDirTmin, rasterDirPPt, periodValue, yearValue)
+  # Extract to cell addresses:
+  climateByCell <- data.frame(
+    cellAddress = (samplingSubset$cellAddress %>% unique),
+    raster::extract(
+      x = climateStack,
+      y = (samplingSubset$cellAddress %>% unique),
+      df = TRUE)) %>%
+    tbl_df %>%
+    dplyr::select(-ID)
+  # Join to sampling subset associated with period and year value:
+  samplingSubsetEnv <- left_join(
+    samplingSubset,
+    climateByCell,
+    by = 'cellAddress')
+  return(samplingSubsetEnv)
+}
+
+# Loop to add climate data to points:
+
+periods <- 1:5
+years <- 2014:2016
+
+outListPeriod <- vector('list', length = 5)
+
+for(i in 1:5){
+  outListYear <- vector('list', length = 3)
+  for(j in 1:length(years)){
+    outListYear[[j]] <- samplingWithClimateFun(rasterDirTmin, rasterDirPPt, periods[i], years[j]) 
+  }
+  outListPeriod[[i]] <- bind_rows(outListYear)
+}
+
+swdSpring <- bind_rows(outListPeriod) %>%
+  dplyr::select(-c(cellAddress, year)) %>%
+  dplyr::filter(!is.na(tmin))
+
+#---------------------------------------------------------------------------------------------------*
+# ---- PREPARE SAMPLES ----
+#---------------------------------------------------------------------------------------------------*
 
 # Function to prepare samples with data for model running:
 
 prepSWD <- function(swdIn, minFlockSize, maxFlockSize, samplingPeriodValue){
-  swdIn %>%
-    dplyr::filter(!(count > 0 & count < minFlockSize),
-                  samplingPeriod == samplingPeriodValue) %>%
-    mutate(
-      pa = ifelse(count >= minFlockSize & count <= maxFlockSize,
-                     1, 0)
-    ) %>%
-    dplyr::select(pa, dev_hi:tmin) %>%
-    mutate(tmin2 = tmin^2) %>%
-    mutate(k = dismo::kfold(x = pa, k = 5, by = pa)) %>%
-    data.frame
+  swdSamplingPeriod <- swdIn %>%
+    dplyr::filter(samplingPeriod == samplingPeriodValue)
+  bind_rows(
+    swdSamplingPeriod %>%
+      dplyr::filter(count == 0) %>%
+      mutate(pa = 0,
+             k = NA),
+    swdSamplingPeriod %>%
+      dplyr::filter(count >= minFlockSize & count <= maxFlockSize) %>%
+      mutate(pa = 1,
+             k = dismo::kfold(x = pa, k = 5, by = pa))
+  ) %>%
+    dplyr::select(pa, dev_hi:tmin2, k)
 }
   
-  
+
   
 
 
