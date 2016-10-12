@@ -38,9 +38,9 @@ swdList <- vector('list', length = 5)
 for(i in 1:length(swdList)){
   flockList <- vector('list', length = 3)
   names(flockList) <- c('Small', 'Medium', 'Large')
-  flockList$Small <- prepSWD(springSWDfull, 1,19, i)
-  flockList$Medium <- prepSWD(springSWDfull, 20,99, i)
-  flockList$Large <- prepSWD(springSWDfull, 100,Inf, i)
+  flockList$Small <- prepSWD(swdSpring, 1,19, i)
+  flockList$Medium <- prepSWD(swdSpring, 20,99, i)
+  flockList$Large <- prepSWD(swdSpring, 100,Inf, i)
   swdList[[i]] <- flockList
   }
 
@@ -58,6 +58,7 @@ maxentRun <- function(swd, betaMultiplier,
   }
   swdAbsence <- swd %>%
     dplyr::filter(pa == 0) #%>%
+    # dplyr::sample_n(10000, replace = FALSE)
   # Create input file of k fold:
   if(kFold != 'noCrossValidate'){
     swdTrain <- swd %>%
@@ -73,11 +74,11 @@ maxentRun <- function(swd, betaMultiplier,
       data.frame
   }
   # Set model arguments
-  modArguments <- c('nothreshold', 'nohinge', 'noquadratic', 'noproduct',
+  modArguments <- c('nohinge', 'noquadratic',
                     str_c('betamultiplier=', betaMultiplier),
                     'addallsamplestobackground','writebackgroundpredictions',
-               'noautofeature','nooutputgrids',
-               'maximumiterations=10000', 'verbose')
+                    'noautofeature','nooutputgrids',
+                    'maximumiterations=10000', 'verbose')
   # Run maxent model with training and background data:
   maxentModel <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
   return(maxentModel)
@@ -89,7 +90,7 @@ maxentRunReduced <- function(swd, betaMultiplier,
                              kFold = 'noCrossValidate', excludeVariables = NULL){
   modelFull <- maxentRun(swd, betaMultiplier)
   variablesToExclude <- getVariableContribution(modelFull) %>%
-    filter(contribution <= 1 & variable != 'tmin') %>%
+    dplyr::filter(contribution <= 1 & variable != 'tmin') %>%
     .$variable
   modelReduced <- maxentRun(swd, betaMultiplier, excludeVariables = variablesToExclude)
   return(modelReduced)
@@ -113,7 +114,7 @@ getVariableContribution <- function(model){
 
 variablesToRemove <- function(model){
   getVariableContribution(model) %>%
-  filter(contribution < 1 & variable != 'tmin') %>%
+  dplyr::filter(contribution < 1 & variable != 'tmin') %>%
   .$variable
 }
 
@@ -145,10 +146,10 @@ calcAIC <- function(swd, betaMultiplier) {
   kn <- length(lambdas)- n.lz - 4
   # Predict suitability:
   presencePredictions <- predict(model,
-                                 swd %>% filter(pa == 1),
+                                 swd %>% dplyr::filter(pa == 1),
                                  args=c('outputformat=raw'))
   absencePredictions <- predict(model, 
-                                swd %>% filter(pa == 0),
+                                swd %>% dplyr::filter(pa == 0),
                                 args=c('outputformat=raw'))
   probsum <- sum(presencePredictions, absencePredictions)
   # How many points?
@@ -163,7 +164,7 @@ calcAIC <- function(swd, betaMultiplier) {
 }
 
 #----------------------------------------------------------------------------*
-# Assess aic values across beta values and output a table of results:
+# Assess AICc values across beta values and output a table of results:
 #----------------------------------------------------------------------------*
 
 betaFinder <- function(swd, betaValues){
@@ -188,37 +189,26 @@ for(i in 1:length(betaPeriods)){
   betaPeriods[[i]] <- betaFlock
 }
 
-# Explore output to find the best beta for a given period and flock size class:
-
-betaPeriods[[1]]$Small
-betaPeriods[[2]]$Small
-betaPeriods[[3]]$Small
-betaPeriods[[4]]$Small
-betaPeriods[[5]]$Small
-
-betaPeriods[[1]]$Medium
-betaPeriods[[2]]$Medium
-betaPeriods[[3]]$Medium
-betaPeriods[[4]]$Medium
-betaPeriods[[5]]$Medium
-
-betaPeriods[[1]]$Large
-betaPeriods[[2]]$Large
-betaPeriods[[3]]$Large
-betaPeriods[[4]]$Large
-betaPeriods[[5]]$Large
-
-save.image("C:/Users/Brian/Desktop/gits/rWorkspace_10_11b.RData")
+save.image('spring_10-12.RData')
 
 # OUTPUT (because the above takes a while to run):
 
 betaByPeriod <- vector('list', length = 5)
 
-betaByPeriod[[1]] <- c(2, 1, 3)
-betaByPeriod[[2]] <- c(2.5, 5.5, 5.5)
-betaByPeriod[[3]] <- c(3, .5, 4)
-betaByPeriod[[4]] <- c(4, .5, 5.5)
-betaByPeriod[[5]] <- c(3.5, .5, 3)
+for(i in 1:5){
+  betaSmall <- betaPeriods[[i]]$Small %>%
+    dplyr::filter(AICc == min(AICc)) %>%
+    .$beta
+  betaMedium <- betaPeriods[[i]]$Medium %>%
+    dplyr::filter(AICc == min(AICc)) %>%
+    .$beta
+  betaLarge <- betaPeriods[[i]]$Large %>%
+    dplyr::filter(AICc == min(AICc)) %>%
+    .$beta
+  betaByPeriod[[i]] <- c(betaSmall, betaMedium, betaLarge)
+}
+
+save.image('spring_10-12.RData')
 
 #===================================================================================================*
 # ---- MODEL EVALUATION ----
@@ -238,6 +228,8 @@ for(i in 1:length(bestModelPeriod)){
   bestModelPeriod[[i]] <- bestModelFlock
 }
 
+save.image('spring_10-12.RData')
+
 #----------------------------------------------------------------------------*
 # Get AUC values associated with test points
 #----------------------------------------------------------------------------*
@@ -252,7 +244,7 @@ runMaxentAUC <- function(swd, bestModel, betaMultiplier, kFold){
   swdReduced <- swd %>%
     dplyr::select(pa, k) %>%
     bind_cols(
-      swd %>% select(one_of(variablesToInclude))
+      swd %>% dplyr::select(one_of(variablesToInclude))
       )
   # Make background, training, and test points:
   swdAbsence <- swdReduced %>%
@@ -260,14 +252,14 @@ runMaxentAUC <- function(swd, bestModel, betaMultiplier, kFold){
   swdTrain <- swdReduced %>%
     dplyr::filter(k != kFold & pa == 1) %>%
     bind_rows(swdAbsence) %>%
-    select(-k) %>%
+    dplyr::select(-k) %>%
     data.frame
   swdTest <- swdReduced %>%
     dplyr::filter(k == kFold & pa == 1) %>%
-    select(-k) %>%
+    dplyr::select(-k) %>%
     data.frame
   # Set model arguments
-  modArguments <- c('nothreshold', 'nohinge', 'noproduct','noquadratic',
+  modArguments <- c('nohinge', 'noquadratic',
                     str_c('betamultiplier=', betaMultiplier),
                     'addallsamplestobackground',
                     'writebackgroundpredictions',
@@ -331,161 +323,44 @@ for(i in 1:length(aucPeriod)){
 
 summaryAUC <- bind_rows(aucPeriod)
 
+save.image('spring_10-12.RData')
+
 # Plot AUC by observation  type output:
 
-dodge <- position_dodge(.4)
+cbPallete <- c("#E69F00", "#009E73", "#D55E00")
+
+dodge <- position_dodge(width = 0.5)
 ann_text <- data.frame(mpg = 15,wt = 5,lab = "Text",
                        cyl = factor(8,levels = c("4","6","8")))
 
 aucPlot <- ggplot(
-  summaryAUCbyObservationType %>%
-    mutate(
-      encounterType = str_replace_all(encounterType,'All', 'Combined'),
-      encounterType = str_replace_all(encounterType, 'Blitz',
-                                      'Winter Blitz')),
-  aes(x = encounterType, y = meanAUC)) +
+  summaryAUC,
+  aes(x = period, y = meanAUC, color = flockSize)) +
   geom_errorbar(aes(ymin=meanAUC - 1.96*seAUC,
-                    ymax=meanAUC + 1.96*seAUC), width = 0,
+                    ymax=meanAUC + 1.96*seAUC),
+                position=position_dodge(width=0.3), width = 0,
                 size = .75) +
-  geom_point(size = 3) +
+  geom_point(size = 3, position=position_dodge(width=0.3)) +
   theme_bw() +
   ylab('AUC') +
   xlab('Observation class') +
-  geom_line(size = 1) +
+  geom_line(size = 1, position=position_dodge(width=0.3)) +
   theme(axis.title = element_text(margin=margin(0,10,0,0))) +
-  theme(legend.key = element_blank()) + 
-  facet_grid(flockSize ~ .)
-
-
-#----------------------------------------------------------------------------*
-# ---- Get ROC and plot ----
-#----------------------------------------------------------------------------*
-
-maxentEvaluation <- function(swd, bestModel, betaMultiplier, kFold){
-  # Get environmental variables to include from the best model:
-  variablesToInclude <- getVariableContribution(bestModel) %>%
-    .$variable
-  # Remove environmental variables not used in this model:
-  swdReduced <- swd %>%
-    select(pa, k) %>%
-    bind_cols(
-      swd %>% select(one_of(variablesToInclude))
-    ) 
-  # Make background, training, and test points:
-  swdAbsence <- swdReduced %>%
-    dplyr::filter(pa == 0) %>% 
-    data.frame
-  swdTrain <- swdReduced %>%
-    dplyr::filter(k != kFold & pa == 1) %>%
-    bind_rows(swdAbsence) %>%
-    select(-k) %>% 
-    data.frame
-  swdTest <- swdReduced %>%
-    dplyr::filter(k == kFold & pa == 1) %>%
-    # bind_rows(swdAbsence) %>%
-    select(-k) %>% 
-    data.frame
-  # Set model arguments
-  modArguments <- c('nothreshold', 'nohinge', 'noproduct','noquadratic',
-                    str_c('betamultiplier=', betaMultiplier),
-                    'addallsamplestobackground',
-                    'writebackgroundpredictions',
-                    'noautofeature','nooutputgrids',
-                    'maximumiterations=10000', 'verbose')
-  # Run maxent model with training and background data:
-  maxentModel <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
-  # Predict model values at test points:
-  predictionPresence <- dismo::predict(maxentModel, swdTest)
-  predictionAbsence <- dismo::predict(maxentModel,swdAbsence %>%
-                                        dplyr::select(-c(pa, k)))
-  # Evaluate model:
-  evaluationObject <- dismo::evaluate(p = predictionPresence,
-                                      a = predictionAbsence)
-  # Return evaluation object:
-  return(evaluationObject)
-}
-
-# Function to make an ROC frame (true and false positive rates):
-
-getRocFrame <- function(eObject, k){
-  logisticThresh <- seq(0, 1, .01) #%>% sort(decreasing = TRUE)
-  rocFrame <- data.frame(logisticThresh)
-  for(i in 1:length(logisticThresh)){
-    fpr <- sum(eObject@absence >= logisticThresh[i])/length(eObject@absence)
-    tpr <- sum(eObject@presence >= logisticThresh[i])/length(eObject@presence)
-    rocFrame$fpr[i] <- fpr
-    rocFrame$tpr[i] <- tpr
-  }
-  rocFrame$k <- k
-  return(rocFrame)
-}
-
-# Get and plot roc for large flocks as an example:
-
-rocList <- vector('list', length = 5)
-
-for(i in 1:5){
-  evaluationObject <- maxentEvaluation(swdLarge,bestModelLarge,1, i)
-  rocList[[i]] <- getRocFrame(evaluationObject, i)
-}
-
-rocFrame <- bind_rows(rocList)
-
-rocPlot <- ggplot(rocFrame %>%
-         select(fpr, tpr, k) %>%
-         mutate(fpr = round(fpr, 4),
-                tpr = round(tpr, 4)) %>%
-         distinct, 
-       aes(y = tpr, x = fpr,group = k)) +
-  geom_line(size = .6) +
-  geom_line(data = data.frame(x = seq(0, 1, .5), k = 1), aes(x = x, y = x),
-            linetype = 4, size = .6) +
-  theme_bw() +
-  ylab('Sensitivity') +
-  xlab('1 - Specificity (Fractional predicted area)') +
-  theme(axis.title = element_text(margin=margin(0,10,0,0)))
-
-
-# Plot output:
-
-png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/rocAUC.png",
-    width = 7.5, height = 4, units = 'in', res = 300)
-grid.arrange(
-  arrangeGrob(
-    rocPlot +
-      geom_text(
-        data = data.frame(
-          fpr = 0.05,
-          tpr = .97,
-          k = 1),
-        label = "A)",
-        size = 6), 
-    aucPlot +
-      geom_text(
-        data = data.frame(
-          flockSize = 'Large',
-          encounterType = 3.1,
-          meanAUC = .85),
-        label = "B)",
-        size = 6) +
-      theme(axis.text.y = element_text(size = 6),
-            axis.text.x = element_text(size = 8)),
-    ncol=2, widths=c(1.6,.9))
-)
-dev.off()
+  theme(legend.key = element_blank())
 
 #----------------------------------------------------------------------------*
 # ---- Make model predictions (raster maps) ----
 #----------------------------------------------------------------------------*
 
-# Get environmental rasters for a given year:
+periodValues <- 1:5
 
-getRstack <- function(year){
-  # Add tmin and ppt for a given year:
-  rStack[['tmin']] <- raster(paste0(pathToRasterData, 'climateRasters/tmin',year))
-  rStack[['tmin2']] <- rStack[['tmin']]^2
-  rStack[['ppt']] <-  raster(paste0(pathToRasterData, 'climateRasters/tmin',year))
-  return(rStack)
+rList2009 <- vector('list', length = 5)
+
+for(i in 1:length(periodValues)){
+  rList2009[[i]] <- stack(
+    rStack, 
+    summarizeClimate(rasterDirTmin, rasterDirPPt, periodValues[i], 2014)
+  )
 }
 
 # For a given best model and year make logistic prediction:
@@ -498,9 +373,26 @@ getLogisticPrediction <- function(bestModel, rasterStack){
 
 rStack2009 <- getRstack(2009)
 
-small2009 <- getLogisticPrediction(bestModelSmall, rStack2009)
-medium2009 <- getLogisticPrediction(bestModelMedium, rStack2009)
-large2009 <- getLogisticPrediction(bestModelLarge, rStack2009)
+small4 <- getLogisticPrediction(
+  bestModelPeriod[[4]][[1]], rList2009[[4]])
+
+medium4 <- getLogisticPrediction(
+  bestModelPeriod[[4]][[2]], rList2009[[4]])
+
+large4 <- getLogisticPrediction(
+  bestModelPeriod[[4]][[3]], rList2009[[4]])
+
+small5 <- getLogisticPrediction(
+  bestModelPeriod[[5]][[1]], rList2009[[5]])
+
+medium5 <- getLogisticPrediction(
+  bestModelPeriod[[5]][[2]], rList2009[[5]])
+
+large5 <- getLogisticPrediction(
+  bestModelPeriod[[5]][[3]], rList2009[[5]])
+
+save.image('spring_10-12.RData')
+
 
 # To plot these, go to script plotSuitabilityMaps.R
 
@@ -514,13 +406,13 @@ runMaxentAreaPrevalence <- function(swd, bestModel, betaMultiplier){
     .$variable
   # Remove environmental variables not used in this model:
   swdReduced <- swd %>%
-    select(pa, k) %>%
+    dplyr::select(pa, k) %>%
     bind_cols(
-      swd %>% select(one_of(variablesToInclude))
+      swd %>% dplyr::select(one_of(variablesToInclude))
     )
   # Make background, training, and test points:
   swdTrain <- swdReduced %>%
-    select(-k) %>%
+    dplyr::select(-k) %>%
     data.frame
   # Set model arguments
   modArguments <- c('nothreshold', 'nohinge', 'noproduct','noquadratic',
@@ -541,7 +433,7 @@ getAreaPrevalenceFrame <- function(model, i){
   row.names(results) <- NULL
   names(results) <- c('value', 'stat')
   results %>%
-    filter(
+    dplyr::filter(
       str_detect(stat,'Prevalence')|
         str_detect(stat, 'Equal.training.sensitivity.and.specificity.logistic.threshold')|
         str_detect(stat, 'Equal.training.sensitivity.and.specificity.area')
@@ -630,7 +522,7 @@ predictedAreaLFplot <- ggplot(permutationFrame %>%
            permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
            Permutation = permuted
            ) %>%
-         filter(permuted != 'Medium-Small'),
+         dplyr::filter(permuted != 'Medium-Small'),
        aes(x=area)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
   scale_fill_manual(values = cbPallete) +
@@ -654,7 +546,7 @@ predictedAreaMFplot <- ggplot(permutationFrame %>%
                                   permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
                                   Permutation = permuted
                                 ) %>%
-                                filter(permuted != 'Large-Small'),
+                                dplyr::filter(permuted != 'Large-Small'),
                               aes(x=area)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
   scale_fill_manual(values = cbPallete[-c(1:2)]) +
@@ -679,7 +571,7 @@ predictedPrevalenceLFplot <- ggplot(permutationFrame %>%
                                   permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
                                   Permutation = permuted
                                 ) %>%
-                                filter(permuted != 'Medium-Small'),
+                                dplyr::filter(permuted != 'Medium-Small'),
                               aes(x=prevalence)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
   scale_fill_manual(values = cbPallete) +
@@ -703,7 +595,7 @@ predictedPrevalenceMFplot <- ggplot(permutationFrame %>%
                                   permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
                                   Permutation = permuted
                                 ) %>%
-                                filter(permuted != 'Large-Small'),
+                                dplyr::filter(permuted != 'Large-Small'),
                               aes(x=prevalence)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
   scale_fill_manual(values = cbPallete[-c(1:2)]) +
@@ -752,9 +644,9 @@ runMaxentK <- function(swd, bestModel, betaMultiplier, kFold){
     .$variable
   # Remove environmental variables not used in this model:
   swdReduced <- swd %>%
-    select(pa, k) %>%
+    dplyr::select(pa, k) %>%
     bind_cols(
-      swd %>% select(one_of(variablesToInclude))
+      swd %>% dplyr::select(one_of(variablesToInclude))
     )
   # Make background, training, and test points:
   swdAbsence <- swdReduced %>%
@@ -762,11 +654,11 @@ runMaxentK <- function(swd, bestModel, betaMultiplier, kFold){
   swdTrain <- swdReduced %>%
     dplyr::filter(k != kFold & pa == 1) %>%
     bind_rows(swdAbsence) %>%
-    select(-k)
+    dplyr::select(-k)
   swdTest <- swdReduced %>%
     dplyr::filter(k == kFold & pa == 1) %>%
     bind_rows(swdAbsence) %>%
-    select(-k)
+    dplyr::select(-k)
   # Set model arguments
   modArguments <- c('nothreshold', 'nohinge', 'noproduct','noquadratic',
                     str_c('betamultiplier=', betaMultiplier),
@@ -797,9 +689,9 @@ getSummaryStatsK <- function(outList, flockSize){
   row.names(results) <- NULL
   names(results) <- c('value', 'stat')
   resultsFrame <- results %>%
-    filter(str_detect(stat,'Prevalence')|
+    dplyr::filter(str_detect(stat,'Prevalence')|
            str_detect(stat, 'Maximum.training.sensitivity.plus.')) %>%
-    filter(!str_detect(stat, '.cumulative'),
+    dplyr::filter(!str_detect(stat, '.cumulative'),
            !str_detect(stat, 'omission'))
   resultsFrame$stat <- c('prevalence', 'logThresh', 'area')
   resultsFrame$flockSize <- flockSize
@@ -855,9 +747,9 @@ maxentRunRandomPair <- function(swd1, swd2, bestMod, betaMultiplier){
     .$variable
   # Remove environmental variables not used in this model:
   swdReduced <- swd %>%
-    select(pa) %>%
+    dplyr::select(pa) %>%
     bind_cols(
-      swd %>% select(one_of(variablesToInclude))
+      swd %>% dplyr::select(one_of(variablesToInclude))
     ) 
   # Set model arguments
   modArguments <- c('nothreshold', 'nohinge', 'noproduct','noquadratic',
@@ -945,10 +837,10 @@ maxentModel <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
 
 
 # evaluationObject <- dismo::evaluate(p = swdTest %>%
-#                                filter(pa > 0) %>%
+#                                dplyr::filter(pa > 0) %>%
 #                                .$predictions,
 #                              a = swdTest %>%
-#                                filter(pa == 0) %>%
+#                                dplyr::filter(pa == 0) %>%
 #                                .$predictions)
 
 modelOutList <- function(minFlockSize, maxFlockSize, years, 
@@ -1005,7 +897,7 @@ maxentRun <- function(minFlockSize, maxFlockSize, years, betaMultiplier, protoco
   # Create input file of k fold::
   swd <- prepSWD(minFlockSize,maxFlockSize, years, protocolChoice) %>%
     data.frame %>%
-    select(-k)
+    dplyr::select(-k)
   # Set model arguments
   betaR <- str_c('betamultiplier=', betaMultiplier)
   modArguments <- c('nothreshold', 'nohinge', #'noproduct','noquadratic',
@@ -1037,11 +929,11 @@ test14 <- maxentCrossValidation(minFlockSize, maxFlockSize, years, kFold, betaR,
 
 modelEvaluate <- function(minFlockSize, maxFlockSize, years, protocolChoice = 'all'){
   presenceLC <- prepSWD(minFlockSize,maxFlockSize, years, protocolChoice = 'all') %>%
-    filter(pa == 1) %>%
+    dplyr::filter(pa == 1) %>%
     dplyr::select(dev_hi:tmin) %>%
     as.matrix
   absenceLC <- prepSWD(minFlockSize,maxFlockSize, years, protocolChoice = 'all') %>%
-    filter(pa == 0) %>%
+    dplyr::filter(pa == 0) %>%
     dplyr::select(dev_hi:tmin) %>%
     as.matrix
   evaluate(presenceLC, absenceLC, test14[[2]])
@@ -1056,7 +948,7 @@ modelEvaluate(minFlockSize, maxFlockSize, years, protocolChoice = 'all')
 testEvaluate <- evaluate(
   p = ,
   a = prepSWD(minFlockSize,maxFlockSize, years, protocolChoice = 'all') %>%
-    filter(pa == 0) %>%
+    dplyr::filter(pa == 0) %>%
     dplyr::select(dev_hi:tmin) %>%
     as.matrix,
   model = test14[[2]]
@@ -1087,11 +979,11 @@ maxentEvaluate <- function(observationClass, flockSizeClass, kFold, beta.multipl
     dplyr::filter(k == kFold)
   testPresence <- swdTest %>%
     dplyr::filter(sp == 1) %>%
-    dplyr::select(-c(sp,lon, lat,k)) # select(lon, lat)%>% 
+    dplyr::select(-c(sp,lon, lat,k)) # dplyr::select(lon, lat)%>% 
   #SpatialPoints(proj4string = CRS(projection(rStack2009)))
   testAbsence <- swdTest %>%
     dplyr::filter(sp == 0) %>%
-    dplyr::select(-c(sp,lon, lat,k)) # select(lon, lat)%>%%>%
+    dplyr::select(-c(sp,lon, lat,k)) # dplyr::select(lon, lat)%>%%>%
   #SpatialPoints(proj4string = CRS(projection(rStack2009)))
   modelEvaluation <- evaluate(testPresence, testAbsence, maxentModel)
   return(list(maxentModel = maxentModel, modelEvaluation = modelEvaluation,
