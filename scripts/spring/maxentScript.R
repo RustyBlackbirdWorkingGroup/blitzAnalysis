@@ -29,6 +29,12 @@ se <- function(x) {sd(x)/sqrt(length(x))}
 
 conf95 <- function(x) se(x)*1.96 
 
+cropRasterByMinLat <- function(rLayer, minLat){
+  extentR <- extent(rLayer)
+  extentR@ymin <- minLat
+  crop(rLayer, extentR)
+}
+
 #----------------------------------------------------------------------------*
 # Get swd (across observation types):
 #----------------------------------------------------------------------------*
@@ -42,7 +48,12 @@ for(i in 1:length(swdList)){
   flockList$Medium <- prepSWD(swdSpring, 20,99, i)
   flockList$Large <- prepSWD(swdSpring, 100,Inf, i)
   swdList[[i]] <- flockList
-  }
+}
+
+swdList <- list(
+  prepSWD1(1,19),prepSWD1(20,99), prepSWD1(20,99)
+)
+
 
 #===================================================================================================*
 # ---- MODEL RUNNING AND CALIBRATION ----
@@ -74,7 +85,7 @@ maxentRun <- function(swd, betaMultiplier,
       data.frame
   }
   # Set model arguments
-  modArguments <- c('nohinge', 'noquadratic',
+  modArguments <- c('nothreshold','nohinge', 'noquadratic',
                     str_c('betamultiplier=', betaMultiplier),
                     'addallsamplestobackground','writebackgroundpredictions',
                     'noautofeature','nooutputgrids',
@@ -139,18 +150,18 @@ calcAIC <- function(swd, betaMultiplier) {
   # Extract lambdas file and convert to a data frame
   lambdas <- model@lambdas
   lambda.df <- data.frame(do.call('rbind', strsplit(lambdas,',',fixed=TRUE)))
+  lambda.df <- lambda.df[-((nrow(lambda.df)-4):(nrow(lambda.df))),]
+  # Get variables used in the model:
   # Determing the number of parameters that had a lambda of zero 
   # Note: Using n.lz = Number of Lambdas that equals Zero
   n.lz <- length(lambda.df[as.numeric(as.character(lambda.df[,2])) == 0,1])
   # Calculate the number of model parameters
-  kn <- length(lambdas)- n.lz - 4
+  kn <- nrow(lambda.df)- n.lz
+  presences <- swd %>% dplyr::filter(pa == 1) %>% dplyr::select(doy:tmin2)
+  absences <- swd %>% dplyr::filter(pa == 0) %>% dplyr::select(doy:tmin2)
   # Predict suitability:
-  presencePredictions <- predict(model,
-                                 swd %>% dplyr::filter(pa == 1),
-                                 args=c('outputformat=raw'))
-  absencePredictions <- predict(model, 
-                                swd %>% dplyr::filter(pa == 0),
-                                args=c('outputformat=raw'))
+  presencePredictions <- predict(model, predictionFrame, args=c('outputformat=raw'))
+  absencePredictions <- predict(model, predictionFrame, args=c('outputformat=raw'))
   probsum <- sum(presencePredictions, absencePredictions)
   # How many points?
   n <- length(presencePredictions)
@@ -177,6 +188,14 @@ betaFinder <- function(swd, betaValues){
 }
 
 betaValues <- seq(0, 10, .5)
+
+betaFlocks <- vector('list', length = 3)
+
+for(i in 1:length(betaFlocks)){
+  betaFlocks[[i]] <- betaFinder(swdList[[i]], betaValues)
+}
+
+
 
 betaPeriods <- vector('list', length = 5)
 
@@ -334,19 +353,33 @@ ann_text <- data.frame(mpg = 15,wt = 5,lab = "Text",
                        cyl = factor(8,levels = c("4","6","8")))
 
 aucPlot <- ggplot(
-  summaryAUC,
+  summaryAUC %>%
+    filter(!(flockSize == 'Large' & period == 5)),
   aes(x = period, y = meanAUC, color = flockSize)) +
   geom_errorbar(aes(ymin=meanAUC - 1.96*seAUC,
                     ymax=meanAUC + 1.96*seAUC),
-                position=position_dodge(width=0.3), width = 0,
+                position=position_dodge(width=0.1), width = 0,
                 size = .75) +
-  geom_point(size = 3, position=position_dodge(width=0.3)) +
+  geom_point(size = 4, position=position_dodge(width=0.1)) +
   theme_bw() +
   ylab('AUC') +
   xlab('Observation class') +
-  geom_line(size = 1, position=position_dodge(width=0.3)) +
+  scale_color_manual(values = cbPallete) +
+  geom_line(size = 1, position=position_dodge(width=0.1)) +
   theme(axis.title = element_text(margin=margin(0,10,0,0))) +
-  theme(legend.key = element_blank())
+  theme(legend.key = element_blank()) +
+  theme(axis.title = element_text(size = 15))
+
+
+png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/aucSpring.png",
+    width = 10, height = 4.5, units = 'in', res = 300)
+aucPlot + 
+  scale_x_continuous(
+    breaks = 1:5,
+    labels = c("March 1-14", "March 15-28","March 29-April 11",
+               "April 12 - 25","April 26 - May 9")
+  )
+dev.off()
 
 #----------------------------------------------------------------------------*
 # ---- Make model predictions (raster maps) ----
@@ -354,10 +387,10 @@ aucPlot <- ggplot(
 
 periodValues <- 1:5
 
-rList2009 <- vector('list', length = 5)
+rList2014 <- vector('list', length = 5)
 
 for(i in 1:length(periodValues)){
-  rList2009[[i]] <- stack(
+  rList2014[[i]] <- stack(
     rStack, 
     summarizeClimate(rasterDirTmin, rasterDirPPt, periodValues[i], 2014)
   )
@@ -371,28 +404,28 @@ getLogisticPrediction <- function(bestModel, rasterStack){
           progress='text')
 }
 
-rStack2009 <- getRstack(2009)
+bestModelPredictions <- vector('list', length = 5)
 
-small4 <- getLogisticPrediction(
-  bestModelPeriod[[4]][[1]], rList2009[[4]])
+for(i in 1:5){
+  envR <- rList2014[[i]]
+  bestModelPredictionsFlock <- vector('list', length = 3)
+  for(j in 1:3){
+    bestModelPredictionsFlock[[j]] <- getLogisticPrediction(
+      bestModelPeriod[[i]][[j]],
+      envR
+    )
+  }
+  bestModelPredictions[[i]] <- bestModelPredictionsFlock
+}
 
-medium4 <- getLogisticPrediction(
-  bestModelPeriod[[4]][[2]], rList2009[[4]])
+bestModelPredictions[[5]][[3]] <- NULL
 
-large4 <- getLogisticPrediction(
-  bestModelPeriod[[4]][[3]], rList2009[[4]])
+for(i in 1:5) plot(bestModelPredictions[[i]][[2]])
 
-small5 <- getLogisticPrediction(
-  bestModelPeriod[[5]][[1]], rList2009[[5]])
-
-medium5 <- getLogisticPrediction(
-  bestModelPeriod[[5]][[2]], rList2009[[5]])
-
-large5 <- getLogisticPrediction(
-  bestModelPeriod[[5]][[3]], rList2009[[5]])
 
 save.image('spring_10-12.RData')
 
+large4
 
 # To plot these, go to script plotSuitabilityMaps.R
 

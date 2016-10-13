@@ -260,8 +260,8 @@ rustyListsSpring <- read.csv('rublEbird.csv') %>%
    dplyr::filter(lon > extent(r)[1] & lon < extent(r)[2],
          lat > extent(r)[3] & lat < extent(r)[4]) %>%
   # Subset to dates associated with the spring blitz:
-#   mutate(date = as.Date(date)) %>%
-#   filter(date %in% periodDates$dates) %>%
+  mutate(date = as.Date(date)) %>%
+  filter(date %in% periodDates$date) %>%
 #   mutate(month = lubridate::month(date),
 #          day = lubridate::day(date)) %>%
   # Remove counts recorded as 'X':
@@ -285,8 +285,8 @@ eBirdListsSpring <- read.csv(pathToEbirdListData) %>%
                 lat > extent(r)[3] & lat < extent(r)[4]) %>% #,
 #                 lubridate::year(date) %in% 2014:2016,
 #                 lubridate::month(date) %in% 3:5) %>%
-  # mutate(date = as.Date(date)) %>%
-  # filter(as.Date(date) %in% periodDates$dates) %>%
+  mutate(date = as.Date(date)) %>%
+  filter(as.Date(date) %in% periodDates$date) %>%
   mutate(year = lubridate::year(date)) %>%
 #   mutate(samplingPeriod = periodDateMatch(as.Date(date))) %>%
   # Remove observationIDs where rusty count was reported as X:
@@ -294,11 +294,11 @@ eBirdListsSpring <- read.csv(pathToEbirdListData) %>%
   # Add count data:
   left_join(rustyListsSpring, by = 'observationID') %>%
   # Change na counts (no observation match) to 0:
-  mutate(count = ifelse(is.na(count), 0, count)) %>%
-  # Add period data:
-  inner_join(periodDates %>%
-               dplyr::select(-year) %>%
-               mutate(date = as.character(date)), by = 'date')
+  mutate(count = ifelse(is.na(count), 0, count)) #%>%
+#   # Add period data:
+#   inner_join(periodDates %>%
+#                dplyr::select(-year) %>%
+#                mutate(date = as.character(date)), by = 'date')
 
 # Add cell addresses:
 
@@ -310,12 +310,223 @@ eBirdListsSpring$cellAddress <- cellFromXY(
     SpatialPoints(proj4string = CRS(projInfo)) 
 )
 
+# Get the minimum latitude of positive observations for a given date
+# 
+# minLats <- eBirdListsSpring %>%
+#   filter(count > 0) %>%
+#   group_by(date) %>%
+#   summarize(minLat = min(lat))
+
+# Subset to background samples above the minimum latitude:
+# 
+# eBirdListsSpring1 <- eBirdListsSpring %>%
+#   inner_join(minLats, by = 'date') %>%
+#   filter(lat >= minLat) %>%
+#   dplyr::select(-minLat)
+
 # Summarize:
 
-springSampling <- eBirdListsSpring %>%
-  group_by(cellAddress, year, samplingPeriod) %>%
+# springSampling <- eBirdListsSpring1 %>%
+#   group_by(cellAddress, year, samplingPeriod) %>%
+#   summarize(count = max(count)) %>%
+#   ungroup
+
+##
+# Test
+springSampling1 <- eBirdListsSpring %>%
+  filter(lubridate::year(date) %in% 2014:2016) %>%
+  group_by(cellAddress, date) %>%
   summarize(count = max(count)) %>%
   ungroup
+
+envByCell1 <- data.frame(
+  cellAddress = (springSampling1$cellAddress %>% unique),
+  raster::extract(
+    x = rStack,
+    y = (springSampling1$cellAddress %>% unique),
+    df = TRUE)
+) %>%
+  tbl_df %>%
+  dplyr::select(-ID)
+
+
+samplingEnvSpring1 <- inner_join(
+  springSampling1,
+  envByCell1,
+  by = 'cellAddress')
+
+dateValues <-  samplingEnvSpring1 %>%
+  .$date %>% unique
+
+cellDate <-  samplingEnvSpring1 %>%
+  dplyr::select(cellAddress, date)
+  
+tminPPtList<- vector('list', length = length(dateValues))
+
+for(i in 1:length(dateValues)){
+  cellDateSubset <- cellDate %>% filter(date == dateValues[i])
+  cellDateSubset$tmin <- raster(
+    paste0(rasterDirTmin, dateValues[i])
+    ) %>%
+    crop(r) %>%
+    raster::extract(cellDateSubset$cellAddress)
+  cellDateSubset$ppt <- raster(
+    paste0(rasterDirPPt, dateValues[i])
+  ) %>%
+    crop(r) %>%
+    raster::extract(cellDateSubset$cellAddress)
+  tminPPtList[[i]] <- cellDateSubset
+}
+
+swdSpring1 <- samplingEnvSpring1 %>%
+  inner_join(
+    bind_rows(
+      tminPPtList
+    ), by = c('cellAddress', 'date')
+  ) %>%
+  mutate(doy = lubridate::yday(date),
+         tmin2 = tmin^2) %>%
+  dplyr::select(count, doy, dev_hi:woodland, ppt, tmin, tmin2)
+  
+
+prepSWD1 <- function(minFlockSize, maxFlockSize){
+  bind_rows(
+    swdSpring1 %>%
+      dplyr::filter(count == 0) %>%
+      mutate(pa = 0,
+             k = NA),
+    swdSpring1 %>%
+      dplyr::filter(count >= minFlockSize & count <= maxFlockSize) %>%
+      mutate(pa = 1,
+             k = dismo::kfold(x = pa, k = 5, by = pa))
+  ) %>%
+    dplyr::select(pa, doy:tmin2, k)
+}
+
+swd <- prepSWD1(90, Inf)
+betaMultiplier = 1
+m1 <- maxentRun(swd, betaMultiplier)
+kFold = 1
+
+maxentRun <- function(swd, betaMultiplier,
+                      kFold = 'noCrossValidate', excludeVariables = NULL){
+  if(!is.null(excludeVariables)){
+    swd <- swd %>%
+      dplyr::select(-one_of(excludeVariables))
+  }
+  swdAbsence <- swd %>%
+    dplyr::filter(pa == 0) %>%
+    dplyr::sample_n(10000, replace = FALSE)
+  # Create input file of k fold:
+  if(kFold != 'noCrossValidate'){
+    swdTrain <- swd %>%
+      dplyr::filter(k != kFold & pa == 1) %>%
+      bind_rows(swdAbsence) %>%
+      dplyr::select(-k) %>%
+      data.frame
+  } else {
+    swdTrain <- swd %>%
+      dplyr::filter(pa == 1) %>%
+      bind_rows(swdAbsence) %>%
+      dplyr::select(-k) %>%
+      data.frame
+  }
+  # Set model arguments
+  modArguments <- c('noquadratic',
+                    str_c('betamultiplier=', betaMultiplier),
+                    'addallsamplestobackground','writebackgroundpredictions',
+                    'noautofeature','nooutputgrids',
+                    'maximumiterations=10000', 'verbose')
+  # Run maxent model with training and background data:
+  maxentModel <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
+  return(maxentModel)
+}
+
+runMaxentAUC <- function(swd, bestModel, betaMultiplier, kFold){
+  # Get environmental variables to include from the best model:
+  variablesToInclude <- getVariableContribution(bestModel) %>%
+    filter(contribution > 1|variable == 'tmin') %>%
+    .$variable
+  # Remove environmental variables not used in this model:
+  swdReduced <- swd %>%
+    dplyr::select(pa, k) %>%
+    bind_cols(
+      swd %>% dplyr::select(one_of(variablesToInclude))
+    )
+  # Make background, training, and test points:
+  swdAbsence <- swdReduced %>%
+    dplyr::filter(pa == 0)
+  swdTrain <- swdReduced %>%
+    dplyr::filter(k != kFold & pa == 1) %>%
+    bind_rows(swdAbsence) %>%
+    dplyr::select(-k) %>%
+    data.frame
+  swdTest <- swdReduced %>%
+    dplyr::filter(k == kFold & pa == 1) %>%
+    dplyr::select(-k) %>%
+    data.frame
+  # Set model arguments
+  modArguments <- c('nothreshold', 'nohinge', 'noquadratic',
+                    str_c('betamultiplier=', betaMultiplier),
+                    'addallsamplestobackground',
+                    'writebackgroundpredictions',
+                    'noautofeature','nooutputgrids',
+                    'maximumiterations=10000', 'verbose')
+  # Run maxent model with training and background data:
+  maxentModel1 <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
+  # Predict model values at test points:
+  predictionPresence <- dismo::predict(maxentModel1, swdTest)
+  predictionAbsence <- dismo::predict(maxentModel1,swdAbsence %>%
+                                        dplyr::select(-c(pa, k)))
+  # Evaluate model:
+  dismo::evaluate(p = predictionPresence, a = predictionAbsence)@auc
+}
+
+betas 
+
+for(i in )
+
+rStack1 <- rStack
+
+tminppt <- rasterPrepTminPpt(rasterDirTmin, rasterDirPPt, '2015-05-12') %>%
+  crop(r)
+
+rStack2 <- stack(rStack1, tminppt)
+
+doy <- rStack2[[1]]
+
+doy <- setValues(doy, 132)
+
+rStack3 <- list(rStack2, doy = doy) %>% stack
+
+test <- predict(m1, rStack3,
+                         args='outputformat=logistic', 
+                         progress='text') %>% plot
+
+rasterPrepTminPpt <- function(rasterDirTmin, rasterDirPPt, date){
+  # Get ppt and tmin rasters for given date:
+  tminR <- raster(paste0(rasterDirTmin, date))
+  pptR <- raster(paste0(rasterDirPPt, date))
+  tmin2 <- tminR^2
+  
+  # Create a raster stack of raster layers:
+  
+  tminPptStack = stack(pptR, tminR, tmin2)
+  
+  # Add raster stack values to memory:
+  
+  values(tminPptStack) = getValues(tminPptStack)
+  
+  # Add projection information to the raster stack:
+  
+  newproj = CRS('+proj=longlat +datum=WGS84')
+  
+  names(tminPptStack) = c('ppt', 'tmin','tmin2')
+  return(tminPptStack)
+}
+
+
+###
 
 #---------------------------------------------------------------------------------------------------*
 # ---- ADD LAND COVER AND CLIMATE DATA (MAKE SWD) ----
@@ -408,7 +619,104 @@ prepSWD <- function(swdIn, minFlockSize, maxFlockSize, samplingPeriodValue){
 }
   
 
+prepSWDtest <- function(swdIn, minFlockSize, maxFlockSize){
+  bind_rows(
+    swdIn %>%
+      dplyr::filter(count == 0) %>%
+      mutate(pa = 0,
+             k = NA),
+    swdIn %>%
+      dplyr::filter(count >= minFlockSize & count <= maxFlockSize) %>%
+      mutate(pa = 1,
+             k = dismo::kfold(x = pa, k = 5, by = pa))
+  ) %>%
+    mutate(samplingPeriod = factor(samplingPeriod)) %>%
+    dplyr::select(pa, samplingPeriod, dev_hi:tmin2, k)
+}
+
+modT <- maxentRun(prepSWDtest(swdSpring, 90, Inf), 0, kFold = 'noCrossValidate', excludeVariables = NULL)
   
+
+maxentRun <- function(swd, betaMultiplier,
+                      kFold = 'noCrossValidate', excludeVariables = NULL){
+  if(!is.null(excludeVariables)){
+    swd <- swd %>%
+      dplyr::select(-one_of(excludeVariables))
+  }
+  swdAbsence <- swd %>%
+    dplyr::filter(pa == 0) %>%
+  dplyr::sample_n(10000, replace = FALSE)
+  # Create input file of k fold:
+  if(kFold != 'noCrossValidate'){
+    swdTrain <- swd %>%
+      dplyr::filter(k != kFold & pa == 1) %>%
+      bind_rows(swdAbsence) %>%
+      dplyr::select(-k) %>%
+      data.frame
+  } else {
+    swdTrain <- swd %>%
+      dplyr::filter(pa == 1) %>%
+      bind_rows(swdAbsence) %>%
+      dplyr::select(-k) %>%
+      data.frame
+  }
+  # Set model arguments
+  modArguments <- c('nothreshold', 'nohinge', 'noquadratic',
+                    str_c('betamultiplier=', betaMultiplier),
+                    'addallsamplestobackground','writebackgroundpredictions',
+                    'noautofeature','nooutputgrids',
+                    'maximumiterations=10000', 'verbose')
+  # Run maxent model with training and background data:
+  maxentModel <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
+  return(maxentModel)
+}
+
+runMaxentAUC <- function(swd, bestModel, betaMultiplier, kFold){
+  # Get environmental variables to include from the best model:
+  variablesToInclude <- getVariableContribution(bestModel) %>%
+    filter(contribution > 1|variable == 'tmin') %>%
+    .$variable
+  # Remove environmental variables not used in this model:
+  swdReduced <- swd %>%
+    dplyr::select(pa, k) %>%
+    bind_cols(
+      swd %>% dplyr::select(one_of(variablesToInclude))
+    )
+  # Make background, training, and test points:
+  swdAbsence <- swdReduced %>%
+    dplyr::filter(pa == 0)
+  swdTrain <- swdReduced %>%
+    dplyr::filter(k != kFold & pa == 1) %>%
+    bind_rows(swdAbsence) %>%
+    dplyr::select(-k) %>%
+    data.frame
+  swdTest <- swdReduced %>%
+    dplyr::filter(k == kFold & pa == 1) %>%
+    dplyr::select(-k) %>%
+    data.frame
+  # Set model arguments
+  modArguments <- c('nothreshold', 'nohinge', 'noquadratic',
+                    str_c('betamultiplier=', betaMultiplier),
+                    'addallsamplestobackground',
+                    'writebackgroundpredictions',
+                    'noautofeature','nooutputgrids',
+                    'maximumiterations=10000', 'verbose')
+  # Run maxent model with training and background data:
+  maxentModel1 <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
+  # Predict model values at test points:
+  predictionPresence <- dismo::predict(maxentModel, swdTest)
+  predictionAbsence <- dismo::predict(maxentModel,swdAbsence %>%
+                                        dplyr::select(-c(pa, k)))
+  # Evaluate model:
+  evaluationObject <- dismo::evaluate(p = predictionPresence,
+                                      a = predictionAbsence)
+  # Return data frame with auc and cor values:
+  data.frame(auc = evaluationObject@auc, 
+             cor = evaluationObject@cor,
+             row.names = NULL)
+}
+
+modT1 <- runMaxentAUC(swd, bestModel, 0, kFold = 1)
 
 
 
