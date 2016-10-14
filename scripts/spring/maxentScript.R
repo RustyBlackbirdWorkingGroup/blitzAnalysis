@@ -49,10 +49,10 @@ for(i in 1:length(swdList)){
   flockList$Large <- prepSWD(swdSpring, 100,Inf, i)
   swdList[[i]] <- flockList
 }
-
-swdList <- list(
-  prepSWD1(1,19),prepSWD1(20,99), prepSWD1(20,99)
-)
+# 
+# swdList <- list(
+#   prepSWD1(1,19),prepSWD1(20,99), prepSWD1(20,99)
+# )
 
 
 #===================================================================================================*
@@ -63,13 +63,14 @@ swdList <- list(
 
 maxentRun <- function(swd, betaMultiplier,
                       kFold = 'noCrossValidate', excludeVariables = NULL){
+  swd <- swd %>% dplyr::select(-cellAddress)
   if(!is.null(excludeVariables)){
     swd <- swd %>%
       dplyr::select(-one_of(excludeVariables))
   }
   swdAbsence <- swd %>%
-    dplyr::filter(pa == 0) #%>%
-    # dplyr::sample_n(10000, replace = FALSE)
+    dplyr::filter(pa == 0) %>%
+    dplyr::sample_n(10000, replace = FALSE)
   # Create input file of k fold:
   if(kFold != 'noCrossValidate'){
     swdTrain <- swd %>%
@@ -141,34 +142,43 @@ readLambdaFile <- function(model){
 }
 
 #----------------------------------------------------------------------------*
+# Model predictions:
+#----------------------------------------------------------------------------*
+
+getPredictionR <- function(maxentModel, envStack, outputFormat){
+  predict(maxentModel,
+          envStack,
+          args = c(paste0('outputformat=', outputFormat))
+  )
+  }
+
+#----------------------------------------------------------------------------*
 # Calculate AIC:
 #----------------------------------------------------------------------------*
 
-calcAIC <- function(swd, betaMultiplier) {
+calcAIC <- function(swd, envStack, betaMultiplier) {
   # Extract a  model:
   model <- maxentRunReduced(swd, betaMultiplier)
   # Extract lambdas file and convert to a data frame
   lambdas <- model@lambdas
   lambda.df <- data.frame(do.call('rbind', strsplit(lambdas,',',fixed=TRUE)))
   lambda.df <- lambda.df[-((nrow(lambda.df)-4):(nrow(lambda.df))),]
-  # Get variables used in the model:
-  # Determing the number of parameters that had a lambda of zero 
-  # Note: Using n.lz = Number of Lambdas that equals Zero
-  n.lz <- length(lambda.df[as.numeric(as.character(lambda.df[,2])) == 0,1])
-  # Calculate the number of model parameters
-  kn <- nrow(lambda.df)- n.lz
-  presences <- swd %>% dplyr::filter(pa == 1) %>% dplyr::select(doy:tmin2)
-  absences <- swd %>% dplyr::filter(pa == 0) %>% dplyr::select(doy:tmin2)
+  # Determing the number of parameters that had a lambda of zero:
+  nRemoveParameters<- length(lambda.df[as.numeric(as.character(lambda.df[,2])) == 0,1])
+  # Calculate the number of model parameters used in the model:
+  nParameters <- nrow(lambda.df)- nRemoveParameters
+  presences <- swd %>% dplyr::filter(pa == 1) %>% dplyr::select(dev_hi:tmin2)
+  absences <- swd %>% dplyr::filter(pa == 0) %>% dplyr::select(dev_hi:tmin2)
   # Predict suitability:
-  presencePredictions <- predict(model, predictionFrame, args=c('outputformat=raw'))
-  absencePredictions <- predict(model, predictionFrame, args=c('outputformat=raw'))
+  presencePredictions <- predict(model, presences, args=c('outputformat=raw'))
+  absencePredictions <- predict(model, absences, args=c('outputformat=raw'))
   probsum <- sum(presencePredictions, absencePredictions)
   # How many points?
   n <- length(presencePredictions)
   # Get log likelihood:
   loglik <- sum(log(presencePredictions / probsum))
   # Calculate the AICc
-  AICc <- -2*loglik + 2*kn + ((2*kn*(kn+1))/(n-kn-1))
+  AICc <- -2*loglik + 2*nParameters + ((2*nParameters*(nParameters+1))/(n-nParameters-1))
   # Output
   aicFrame <- data.frame(nParm = kn, beta = betaMultiplier,AICc = AICc)
   return(aicFrame)
@@ -187,15 +197,7 @@ betaFinder <- function(swd, betaValues){
   out
 }
 
-betaValues <- seq(0, 10, .5)
-
-betaFlocks <- vector('list', length = 3)
-
-for(i in 1:length(betaFlocks)){
-  betaFlocks[[i]] <- betaFinder(swdList[[i]], betaValues)
-}
-
-
+betaValues <- seq(0, 10, .2)
 
 betaPeriods <- vector('list', length = 5)
 
@@ -208,7 +210,7 @@ for(i in 1:length(betaPeriods)){
   betaPeriods[[i]] <- betaFlock
 }
 
-save.image('spring_10-12.RData')
+save.image('spring_10-13.RData')
 
 # OUTPUT (because the above takes a while to run):
 
