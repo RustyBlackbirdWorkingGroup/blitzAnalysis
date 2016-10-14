@@ -63,14 +63,15 @@ for(i in 1:length(swdList)){
 
 maxentRun <- function(swd, betaMultiplier,
                       kFold = 'noCrossValidate', excludeVariables = NULL){
-  swd <- swd %>% dplyr::select(-cellAddress)
+  swd <- swd %>%
+    dplyr::select(-cellAddress)
   if(!is.null(excludeVariables)){
     swd <- swd %>%
       dplyr::select(-one_of(excludeVariables))
   }
   swdAbsence <- swd %>%
-    dplyr::filter(pa == 0) %>%
-    dplyr::sample_n(10000, replace = FALSE)
+    dplyr::filter(pa == 0) #%>%
+    #dplyr::sample_n(10000, replace = FALSE)
   # Create input file of k fold:
   if(kFold != 'noCrossValidate'){
     swdTrain <- swd %>%
@@ -86,7 +87,7 @@ maxentRun <- function(swd, betaMultiplier,
       data.frame
   }
   # Set model arguments
-  modArguments <- c('nothreshold','nohinge', 'noquadratic',
+  modArguments <- c('nothreshold','nohinge', 'noquadratic','noproduct',
                     str_c('betamultiplier=', betaMultiplier),
                     'addallsamplestobackground','writebackgroundpredictions',
                     'noautofeature','nooutputgrids',
@@ -142,45 +143,43 @@ readLambdaFile <- function(model){
 }
 
 #----------------------------------------------------------------------------*
-# Model predictions:
-#----------------------------------------------------------------------------*
-
-getPredictionR <- function(maxentModel, envStack, outputFormat){
-  predict(maxentModel,
-          envStack,
-          args = c(paste0('outputformat=', outputFormat))
-  )
-  }
-
-#----------------------------------------------------------------------------*
 # Calculate AIC:
 #----------------------------------------------------------------------------*
 
-calcAIC <- function(swd, envStack, betaMultiplier) {
+calcAIC <- function(swd, betaMultiplier) {
+  # Point data, all:
+  swdPA <- swd %>%
+    dplyr::select(-c(cellAddress, pa))
+  # Point data, presence:
+  swdP <- swd %>%
+    filter(pa == 1) %>%
+    dplyr::select(-c(cellAddress, pa))
   # Extract a  model:
   model <- maxentRunReduced(swd, betaMultiplier)
-  # Extract lambdas file and convert to a data frame
+  # Extract lambdas file and convert to a data frame:
   lambdas <- model@lambdas
   lambda.df <- data.frame(do.call('rbind', strsplit(lambdas,',',fixed=TRUE)))
   lambda.df <- lambda.df[-((nrow(lambda.df)-4):(nrow(lambda.df))),]
   # Determing the number of parameters that had a lambda of zero:
   nRemoveParameters<- length(lambda.df[as.numeric(as.character(lambda.df[,2])) == 0,1])
   # Calculate the number of model parameters used in the model:
-  nParameters <- nrow(lambda.df)- nRemoveParameters
+  nPar <- nrow(lambda.df)- nRemoveParameters
   presences <- swd %>% dplyr::filter(pa == 1) %>% dplyr::select(dev_hi:tmin2)
   absences <- swd %>% dplyr::filter(pa == 0) %>% dplyr::select(dev_hi:tmin2)
-  # Predict suitability:
-  presencePredictions <- predict(model, presences, args=c('outputformat=raw'))
-  absencePredictions <- predict(model, absences, args=c('outputformat=raw'))
-  probsum <- sum(presencePredictions, absencePredictions)
-  # How many points?
-  n <- length(presencePredictions)
+  # Model predictions across points:
+  predictions <- predict(model, as.matrix(swd), args=c('outputformat=raw'))
+  # Standardize predictinos such that they sum to 1:
+  predStand <- predictions/sum(predictions)
+  # Model predictions at presence points
+  predictionsP <- predict(model, as.matrix(swdP), args=c('outputformat=raw'))
   # Get log likelihood:
-  loglik <- sum(log(presencePredictions / probsum))
+  loglik <- sum(log(predictionsP), na.rm = TRUE)
+  # How many points?
+  n <- length(predictionsP)
   # Calculate the AICc
-  AICc <- -2*loglik + 2*nParameters + ((2*nParameters*(nParameters+1))/(n-nParameters-1))
+  AICc <- -2*loglik + 2*nPar + ((2*nPar*(nPar+1))/(n-nPar-1))
   # Output
-  aicFrame <- data.frame(nParm = kn, beta = betaMultiplier,AICc = AICc)
+  aicFrame <- data.frame(nParm = nPar, beta = betaMultiplier,AICc = AICc)
   return(aicFrame)
 }
 
@@ -197,7 +196,7 @@ betaFinder <- function(swd, betaValues){
   out
 }
 
-betaValues <- seq(0, 10, .2)
+betaValues <- seq(1, 15, 1)
 
 betaPeriods <- vector('list', length = 5)
 
@@ -213,23 +212,43 @@ for(i in 1:length(betaPeriods)){
 save.image('spring_10-13.RData')
 
 # OUTPUT (because the above takes a while to run):
+# Also note, there are some funky values in the above (due to sampling a subset, looking for overall pattern in AIC)
+
+
+betaPeriods[[1]]$Large %>%
+  arrange(AICc) %>%
+  mutate(dAIC = AICc - min(AICc))
 
 betaByPeriod <- vector('list', length = 5)
 
-for(i in 1:5){
-  betaSmall <- betaPeriods[[i]]$Small %>%
-    dplyr::filter(AICc == min(AICc)) %>%
-    .$beta
-  betaMedium <- betaPeriods[[i]]$Medium %>%
-    dplyr::filter(AICc == min(AICc)) %>%
-    .$beta
-  betaLarge <- betaPeriods[[i]]$Large %>%
-    dplyr::filter(AICc == min(AICc)) %>%
-    .$beta
-  betaByPeriod[[i]] <- c(betaSmall, betaMedium, betaLarge)
-}
+
+# betaByPeriod[[1]] <- c(3, 13, 6)
+# 
+# betaByPeriod[[2]] <- c(5, 4, 10)
+# 
+# betaByPeriod[[3]] <- c(11, 6, 12)
+# 
+# betaByPeriod[[4]] <- c(2, 12, 6)
+# 
+# betaByPeriod[[5]] <- c(10, 11, 2)
+
+
+
+betaByPeriod[[1]] <- c(6, 3, 2)
+
+betaByPeriod[[2]] <- c(4, 8, 5)
+
+betaByPeriod[[3]] <- c(12, 6, 6)
+
+betaByPeriod[[4]] <- c(11, 9, 3)
+
+betaByPeriod[[5]] <- c(11, 10, 3)
 
 save.image('spring_10-12.RData')
+
+betaPeriods[[1]]$Large %>%
+  arrange(AICc) %>%
+  mutate(dAIC = AICc - min(AICc))
 
 #===================================================================================================*
 # ---- MODEL EVALUATION ----
@@ -258,6 +277,8 @@ save.image('spring_10-12.RData')
 # Function to run maxent model and return AUC for a given cross-validation fold:
 
 runMaxentAUC <- function(swd, bestModel, betaMultiplier, kFold){
+  swd <- swd %>%
+    dplyr::select(-cellAddress)
   # Get environmental variables to include from the best model:
   variablesToInclude <- getVariableContribution(bestModel) %>%
     .$variable
@@ -280,18 +301,19 @@ runMaxentAUC <- function(swd, bestModel, betaMultiplier, kFold){
     dplyr::select(-k) %>%
     data.frame
   # Set model arguments
-  modArguments <- c('nohinge', 'noquadratic',
+  modArguments <- c('nothreshold','nohinge', 'noquadratic','noproduct',
                     str_c('betamultiplier=', betaMultiplier),
-                    'addallsamplestobackground',
-                    'writebackgroundpredictions',
+                    'addallsamplestobackground','writebackgroundpredictions',
                     'noautofeature','nooutputgrids',
                     'maximumiterations=10000', 'verbose')
   # Run maxent model with training and background data:
   maxentModel <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
   # Predict model values at test points:
-  predictionPresence <- dismo::predict(maxentModel, swdTest)
-  predictionAbsence <- dismo::predict(maxentModel,swdAbsence %>%
-                                 dplyr::select(-c(pa, k)))
+  predictionPresence <- dismo::predict(maxentModel, as.matrix(swdTest))
+  predictionAbsence <- dismo::predict(maxentModel,
+                                      swdAbsence %>%
+                                        dplyr::select(-c(pa, k)) %>%
+                                        as.matrix)
   # Evaluate model:
   evaluationObject <- dismo::evaluate(p = predictionPresence,
                                a = predictionAbsence)
@@ -350,10 +372,6 @@ save.image('spring_10-12.RData')
 
 cbPallete <- c("#E69F00", "#009E73", "#D55E00")
 
-dodge <- position_dodge(width = 0.5)
-ann_text <- data.frame(mpg = 15,wt = 5,lab = "Text",
-                       cyl = factor(8,levels = c("4","6","8")))
-
 aucPlot <- ggplot(
   summaryAUC %>%
     filter(!(flockSize == 'Large' & period == 5)),
@@ -365,8 +383,8 @@ aucPlot <- ggplot(
   geom_point(size = 4, position=position_dodge(width=0.1)) +
   theme_bw() +
   ylab('AUC') +
-  xlab('Observation class') +
-  scale_color_manual(values = cbPallete) +
+  xlab('Observation period') +
+  scale_color_manual(values = cbPallete, guide = guide_legend(title = 'Flock size')) +
   geom_line(size = 1, position=position_dodge(width=0.1)) +
   theme(axis.title = element_text(margin=margin(0,10,0,0))) +
   theme(legend.key = element_blank()) +
@@ -374,12 +392,12 @@ aucPlot <- ggplot(
 
 
 png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/aucSpring.png",
-    width = 10, height = 4.5, units = 'in', res = 300)
+    width = 9, height = 4.5, units = 'in', res = 300)
 aucPlot + 
   scale_x_continuous(
     breaks = 1:5,
     labels = c("March 1-14", "March 15-28","March 29-April 11",
-               "April 12 - 25","April 26 - May 9")
+               "April 12-25","April 26-May 9")
   )
 dev.off()
 
@@ -427,41 +445,13 @@ for(i in 1:5) plot(bestModelPredictions[[i]][[2]])
 
 save.image('spring_10-12.RData')
 
-large4
-
 # To plot these, go to script plotSuitabilityMaps.R
 
 #----------------------------------------------------------------------------*
 # ---- Area, prevalence, threshold ----
 #----------------------------------------------------------------------------*
 
-runMaxentAreaPrevalence <- function(swd, bestModel, betaMultiplier){
-  # Get environmental variables to include from the best model:
-  variablesToInclude <- getVariableContribution(bestModel) %>%
-    .$variable
-  # Remove environmental variables not used in this model:
-  swdReduced <- swd %>%
-    dplyr::select(pa, k) %>%
-    bind_cols(
-      swd %>% dplyr::select(one_of(variablesToInclude))
-    )
-  # Make background, training, and test points:
-  swdTrain <- swdReduced %>%
-    dplyr::select(-k) %>%
-    data.frame
-  # Set model arguments
-  modArguments <- c('nothreshold', 'nohinge', 'noproduct','noquadratic',
-                    str_c('betamultiplier=', betaMultiplier),
-                    'addallsamplestobackground',
-                    'writebackgroundpredictions',
-                    'noautofeature','nooutputgrids',
-                    'maximumiterations=10000', 'verbose')
-  # Run maxent model with training and background data:
-  maxentModel <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
-  return(maxentModel)
-}
-
-getAreaPrevalenceFrame <- function(model, i){
+getAreaPrevalenceFrame <- function(model){
   results <- model@results %>%
     data.frame
   results$stat <- row.names(results)
@@ -474,13 +464,99 @@ getAreaPrevalenceFrame <- function(model, i){
         str_detect(stat, 'Equal.training.sensitivity.and.specificity.area')
       ) %>%
     mutate(
-      iteration = i,
       stat = ifelse(str_detect(stat, 'Prevalence'), 'prevalence', stat),
       stat = ifelse(str_detect(stat, 'logistic'), 'threshold', stat),
       stat = ifelse(str_detect(stat, 'area'), 'area', stat)
       ) %>%
     spread(stat, value)
 }
+
+for(i in 1:length(bestModelPeriod)) names(bestModelPeriod[[i]]) <- c('Small', 'Medium', 'Large')
+
+areaPrevalenceByPeriodL <- vector('list', length = 5)
+flockNames <- c('Small', 'Medium', 'Large')
+
+for(i in 1:5){
+  areaPrevalenceByFlock <- vector('list', length = 3)
+  for(j in 1:3){
+    model <- bestModelPeriod[[i]][[j]]
+    areaPrevalenceByFlock[[j]] <- getAreaPrevalenceFrame(model) %>%
+      mutate(flockSize = flockNames[j],
+             samplingPeriod = i)
+  }
+  areaPrevalenceByPeriodL[[i]] <- bind_rows(areaPrevalenceByFlock)
+}
+
+areaPrevalenceSummary <- bind_rows(areaPrevalenceByPeriodL)
+
+
+cbPallete <- c("#E69F00", "#009E73", "#D55E00")
+
+areaPlot <- ggplot(
+  areaPrevalenceSummary %>%
+    filter(!(flockSize == 'Large' & samplingPeriod == 5)),
+  aes(x = samplingPeriod, y = area, color = flockSize)) +
+  geom_point(size = 4, position=position_dodge(width=0.1)) +
+  theme_bw() +
+  ylab('Fractional Predicted Area') +
+  xlab('Observation period') +
+  ylim(.18, .41) +
+  scale_color_manual(values = cbPallete, guide = guide_legend(title = 'Flock size')) +
+  geom_line(size = 1, position=position_dodge(width=0.1)) +
+  theme(axis.title = element_text(margin=margin(0,10,0,0))) +
+  theme(legend.key = element_blank()) +
+  theme(axis.title = element_text(size = 15)) + 
+  scale_x_continuous(
+    breaks = 1:5,
+    labels = c("Mar. 1-14", "Mar. 15-28","Mar. 29-Apr. 11",
+               "Apr. 12 - 25","Apr. 26 - May 9")
+  )
+
+prevalencePlot <- ggplot(
+  areaPrevalenceSummary %>%
+    filter(!(flockSize == 'Large' & samplingPeriod == 5)),
+  aes(x = samplingPeriod, y = prevalence, color = flockSize)) +
+  geom_point(size = 4, position=position_dodge(width=0.1)) +
+  theme_bw() +
+  ylab('Prevalence') +
+  xlab('Observation period') +
+  ylim(.18, .41) +
+  scale_color_manual(values = cbPallete, guide = guide_legend(title = 'Flock size')) +
+  geom_line(size = 1, position=position_dodge(width=0.1)) +
+  theme(axis.title = element_text(margin=margin(0,10,0,0))) +
+  theme(legend.key = element_blank()) +
+  theme(axis.title = element_text(size = 15)) + 
+  scale_x_continuous(
+    breaks = 1:5,
+    labels = c("Mar. 1-14", "Mar. 15-28","Mar. 29-Apr. 11",
+               "Apr. 12 - 25","Apr. 26 - May 9")
+  )
+
+grid.arrange(
+  arrangeGrob(
+    areaPlot + guides(color = FALSE) +
+      geom_text(aes(x = 4.5, y = .4), label = 'A)', size = 5, color = 1),
+    prevalencePlot  +
+      geom_text(aes(x = 4.5, y = .4), label = 'B)', size = 5, color = 1)
+    , ncol=2, widths = c(.95,1.1))
+)
+
+  
+
+
+png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/areaPrevalenceSpring.png",
+    width = 11, height = 4.5, units = 'in', res = 300)
+grid.arrange(
+  arrangeGrob(
+    prevalencePlot + guides(color = FALSE) +
+      geom_text(aes(x = 4.5, y = .4), label = 'A)', size = 5, color = 1),
+    areaPlot  +
+      geom_text(aes(x = 4.5, y = .4), label = 'B)', size = 5, color = 1)
+    , ncol=2, widths = c(.95,1.1))
+)
+dev.off()
+
+
 
 # Function to generate a random sample of flock size 1 by flock size 2
 # Note: Flock size 1 is the flocks size of interest, comparison to flock size 2
