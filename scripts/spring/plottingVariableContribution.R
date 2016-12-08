@@ -75,10 +75,10 @@ dataStackedBar <- bind_rows(variableContributionByPeriod) %>%
     variable = variable %>%
       factor(
         levels = c('flood','pasture','rowcrop','ppt','dev_hi','tmin','weth','wetw','other'),
-        labels = c('Floodplain    ', 'Pasture    ',
-                   'Row crop    ','Precipitation    ', 'Highly developed    ',
-                   'Minimum temperature    ', 'Emergent wetland     ',
-                   'Woody wetland     ','Other    '),
+        labels = c('Floodplain (+)    ', 'Pasture (+/-)   ',
+                   'Row crop (+)    ','Precipitation (+)    ', 'Highly developed (-)    ',
+                   'Minimum temperature (+/-)    ', 'Emergent wetland  (+)     ',
+                   'Woody wetland (+)     ','Other    '),
              ordered = TRUE),
     samplingPeriod = samplingPeriod %>%
       factor(
