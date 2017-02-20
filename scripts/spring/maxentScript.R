@@ -49,11 +49,6 @@ for(i in 1:length(swdList)){
   flockList$Large <- prepSWD(swdSpring, 100,Inf, i)
   swdList[[i]] <- flockList
 }
-# 
-# swdList <- list(
-#   prepSWD1(1,19),prepSWD1(20,99), prepSWD1(20,99)
-# )
-
 
 #===================================================================================================*
 # ---- MODEL RUNNING AND CALIBRATION ----
@@ -71,7 +66,6 @@ maxentRun <- function(swd, betaMultiplier,
   }
   swdAbsence <- swd %>%
     dplyr::filter(pa == 0) #%>%
-    #dplyr::sample_n(10000, replace = FALSE)
   # Create input file of k fold:
   if(kFold != 'noCrossValidate'){
     swdTrain <- swd %>%
@@ -214,25 +208,11 @@ save.image('spring_10-13.RData')
 # OUTPUT (because the above takes a while to run):
 # Also note, there are some funky values in the above (due to sampling a subset, looking for overall pattern in AIC)
 
-
 betaPeriods[[1]]$Large %>%
   arrange(AICc) %>%
   mutate(dAIC = AICc - min(AICc))
 
 betaByPeriod <- vector('list', length = 5)
-
-
-# betaByPeriod[[1]] <- c(3, 13, 6)
-# 
-# betaByPeriod[[2]] <- c(5, 4, 10)
-# 
-# betaByPeriod[[3]] <- c(11, 6, 12)
-# 
-# betaByPeriod[[4]] <- c(2, 12, 6)
-# 
-# betaByPeriod[[5]] <- c(10, 11, 2)
-
-
 
 betaByPeriod[[1]] <- c(6, 3, 2)
 
@@ -244,7 +224,11 @@ betaByPeriod[[4]] <- c(11, 9, 3)
 
 betaByPeriod[[5]] <- c(11, 10, 3)
 
+# I save the disk image below, due to long run time:
+
 save.image('spring_10-12.RData')
+
+# To look at AICc's, you can use the below:
 
 betaPeriods[[1]]$Large %>%
   arrange(AICc) %>%
@@ -268,10 +252,12 @@ for(i in 1:length(bestModelPeriod)){
   bestModelPeriod[[i]] <- bestModelFlock
 }
 
+# I save the disk image below, due to long run time:
+
 save.image('spring_10-12.RData')
 
 #----------------------------------------------------------------------------*
-# Get AUC values associated with test points
+# ---- Get AUC values associated with test points ----
 #----------------------------------------------------------------------------*
 
 # Function to run maxent model and return AUC for a given cross-validation fold:
@@ -366,9 +352,13 @@ for(i in 1:length(aucPeriod)){
 
 summaryAUC <- bind_rows(aucPeriod)
 
+# I save the disk image below, due to long run time:
+
 save.image('spring_10-12.RData')
 
-# Plot AUC by observation  type output:
+#----------------------------------------------------------------------------*
+# ---- Plot AUC by observation type ----
+#----------------------------------------------------------------------------*
 
 cbPallete <- c("#E69F00", "#009E73", "#D55E00")
 
@@ -390,6 +380,7 @@ aucPlot <- ggplot(
   theme(legend.key = element_blank()) +
   theme(axis.title = element_text(size = 15))
 
+# Set outPlots directory (example):
 
 png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/aucSpring.png",
     width = 9, height = 4.5, units = 'in', res = 300)
