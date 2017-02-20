@@ -22,7 +22,7 @@ smartInstallAndLoad <- function(packageVector){
 
 smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
                       'lubridate','raster', 'dismo', 'ggplot2', 'rJava',
-                      'grid', 'gridExtra'))
+                      'grid', 'gridExtra', 'maps', 'maptools', 'rgeos'))
 
 # Override some libraries for tidyverse functions:
 
@@ -386,7 +386,7 @@ save.image(diskImage)
 #-------------------------------------------------------------------------------*
 # ---- Predict models to raster ----
 #-------------------------------------------------------------------------------*
-# Example = 2014
+# Example = 2014, see plotting suitability rasters in the plotting section
 # Set periods:
 
 periodValues <- 1:5
@@ -551,8 +551,99 @@ dataStackedBar <- bind_rows(variableContributionByPeriod) %>%
 #===============================================================================*
 #---- PLOTTING ---- 
 #===============================================================================*
-# AUC, area prevalence, and variable contribution plots. For raster maps, see
-#plotSuitabilityMaps.R
+# Plots include:
+#   1. Suitability maps, 2014 example (due to temperature and precip rasters)
+#   2. AUC
+#   3. Area/prevalence
+#   4. Variable contribution plots. 
+
+#-------------------------------------------------------------------------------*
+# ---- Plot suitability maps ----
+#-------------------------------------------------------------------------------*
+
+# Function to crop polygons by bounding box:
+
+gClip <- function(shp, bb){
+  if(class(bb) == "matrix") b_poly <- as(extent(as.vector(t(bb))), "SpatialPolygons")
+  else b_poly <- as(extent(bb), "SpatialPolygons")
+  gIntersection(shp, b_poly, byid = T)
+}
+
+# Get US states polygons:
+
+states <-maps::map("state", col="transparent", plot=FALSE, fill = TRUE)
+
+# Clip US states polygons to the raster output extent:
+
+us <- map2SpatialPolygons(states, IDs = states$names,
+                          proj4string=CRS("+proj=longlat +datum=WGS84")) %>%
+  gSimplify(tol = 0.0001) %>%
+  gBuffer(byid = TRUE, width = 0) %>%
+  gClip(bbox(extent(rStack)))
+
+# Aggregate then mask rasters to shapefiles and make into a data frame:
+
+prepRasterToPlot = function(r, flockSize){
+  r %>%
+    # aggregate(2) %>%
+    mask(us) %>%
+    rasterToPoints %>%
+    data.frame %>%
+    mutate(flockClass = flockSize)
+}
+
+# Prepare rasters for plotting in ggplot for each period:
+
+rListPeriod <- vector('list', length = 5)
+
+for(i in 1:5){
+  rListPeriod[[i]] <- bind_rows(
+    prepRasterToPlot(bestModelPredictions[[i]][[1]], 'Small'),
+    prepRasterToPlot(bestModelPredictions[[i]][[2]], 'Medium'),
+    prepRasterToPlot(bestModelPredictions[[i]][[3]], 'Large')
+  ) %>%
+    mutate(samplingPeriod = i) 
+}
+
+# List to data frame and provide plot-friendly labels:
+
+rastersForPlotting <- bind_rows(rListPeriod) %>%
+  mutate(
+    flockClass = factor(flockClass,
+                        levels = c('Small', 'Medium', 'Large')),
+    samplingPeriod = factor(samplingPeriod,
+                            labels = c("March 1-14", "March 15-28",
+                                       "March 29-April 11",
+                                       "April 12 - 25",
+                                       "April 26 - May 9"))
+  )
+
+# Plot suitability maps:
+
+rastersForPlotting %>%
+  ggplot(aes(x, y)) + 
+  geom_raster(aes(fill = layer)) +
+  facet_grid(samplingPeriod ~ flockClass) +
+  scale_fill_gradientn(name = 'Habitat\nsuitability',
+                       colours=c('navyblue', 'darkblue', 'blue' , 'yellow', 'red', 'darkred'), 
+                       na.value = 'gray70') +
+  geom_map(map = fortify(us), data = us, aes(map_id = id, x = long, y = lat, group = group), 
+           fill = NA, color = 'black', size = .15) +
+  labs(x = 'Longitude', y = 'Latitude') +
+  theme_bw() + 
+  theme(axis.title = element_text(size = rel(1)),
+        axis.text = element_text(size = rel(.6)),
+        axis.ticks.length = unit(1, 'mm'),
+        strip.text = element_text(size = rel(0.6)),
+        legend.title = element_text(size = rel(0.6)),
+        legend.text = element_text(size = rel(0.6)))
+
+# Save plot output:
+
+ggsave(paste0(outPlotsDir, 'springSuitabilityMaps2014.png'), 
+       width = 8.5, height = 11, units = 'in')
+dev.off()
+
 
 #-------------------------------------------------------------------------------*
 # ---- Plot AUC by observation type ----
@@ -582,7 +673,7 @@ aucPlot <- ggplot(
   theme(legend.key = element_blank()) +
   theme(axis.title = element_text(size = 15))
 
-# Save plot to outplots directory:
+# Save plot output:
 
 png(filename = paste0(outPlotsDir, 'aucSpring.png'),
     width = 9, height = 4.5, units = 'in', res = 300)
@@ -646,7 +737,7 @@ prevalencePlot <- ggplot(
                "Apr. 12 - 25","Apr. 26 - May 9")
   )
 
-# Arrange as grid and save:
+# Arrange as grid and save plot output:
 
 png(filename = paste0(outPlotsDir, 'areaPrevalenceSpring.png'),
     width = 11, height = 4.5, units = 'in', res = 300)
@@ -735,7 +826,8 @@ g <- ggplotGrob(plots[[1]] + theme(legend.position="top"))$grobs
 
 legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
 
-# Plot output:
+# Save plot output:
+
 png(filename = paste0(outPlotsDir, 'VariableContributionSpring.png'), 
     width = 8.5, height = 5.5, units = 'in', res = 300)
 gridExtra::grid.arrange(legend, 
@@ -749,3 +841,5 @@ gridExtra::grid.arrange(legend,
                           nrow = 2, heights = c(4.5,6)),
                         nrow = 2, heights = c(1, 6))
 dev.off()
+
+#### END ####
