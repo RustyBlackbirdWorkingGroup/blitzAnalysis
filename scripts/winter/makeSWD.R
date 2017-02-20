@@ -38,93 +38,33 @@ options(stringsAsFactors = FALSE)
 
 pathToRasterData <- '/Users/bsevans/Dropbox/rustyBlackbirdData/lc_asc'
 
+# Set path to climate data:
+
+pathToClimateData <- '/Users/bsevans/Dropbox/rustyBlackbirdData/climateRasters/'
+
 # Set path to eBird list data (example usage, do not run):
 
 pathToEbirdListData <- '/Users/bsevans/Dropbox/rustyBlackbirdData/eBirdListData.csv'
 
-#---------------------------------------------------------------------------------------------------*
-# ---- FUNCTIONS ----
-#---------------------------------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
+# ---- PREPARING BIOCLIMATIC DATA ----
+#-------------------------------------------------------------------------------*
 
 loadEnv <- function(rasterDirectory){
   require(raster)
   # Find the raster data (searches for and ID's all files that end in ".asc":
-  
   raster_data <- list.files(rasterDirectory,
                             pattern='\\.asc$', full=T)    
-  
   # Create a raster stack of raster layers:
-  
   env.stack <- stack(raster_data)
-  
   # Add raster stack values to memory:
-  
   values(env.stack) <- getValues(env.stack)
-  
   # Add projection information to the raster stack:
-  
   projection(env.stack) <- CRS('+proj=longlat +datum=WGS84')
-  
   names(env.stack) <- c('dev_hi','dev_li','flood','forh', 'form', 'grass',
                        'pasture','ppt','rowcrop', 'shrub','tmin', 'upfor',
                        'weth', 'wetw', 'woodland')
   return(env.stack)
-}
-
-# Function to load tmin raster for a given date (if necessary):
-
-downloadTminRaster <- function(year, month, day){
-  yearMonth <- paste0(year, '0', month, '00') %>% as.numeric
-  date <- yearMonth + day
-  if(year != 2016){
-    ftpAddress <- paste('ftp://prism.oregonstate.edu/daily/tmin',
-                        year,
-                        'PRISM_tmin_stable_4kmD1',
-                        sep = '/')
-  } else {
-    ftpAddress <- paste('ftp://prism.oregonstate.edu/daily/tmin',
-                        year,
-                        'PRISM_tmin_provisional_4kmD1',
-                        sep = '/')
-  }
-  tmin <- tempfile()
-  ftp <- paste(ftpAddress, date, 'bil.zip', sep = '_')
-  download.file(ftp, tmin)
-  # Unzip:
-  tmin <- unzip(tmin)
-  # Convert to raster format:
-  tmin <- raster(tmin[1])
-  # Provide projection information:
-  crs(tmin) <- "+proj=longlat +datum=WGS84"
-  return(crop(tmin, rStack[[1]]))
-}
-
-# Function to load precipitation raster for a given date (if necessary):
-
-downloadPPTRaster <- function(year, month, day){
-  yearMonth <- paste0(year, '0', month, '00') %>% as.numeric
-  date <- yearMonth + day
-  if(year != 2016){
-    ftpAddress <- paste('ftp://prism.oregonstate.edu/daily/ppt',
-                        year,
-                        'PRISM_ppt_stable_4kmD2',
-                        sep = '/')
-  } else {
-    ftpAddress <- paste('ftp://prism.oregonstate.edu/daily/ppt',
-                        year,
-                        'PRISM_ppt_provisional_4kmD2',
-                        sep = '/')
-  }
-  ppt <- tempfile()
-  ftp <- paste(ftpAddress, date, 'bil.zip', sep = '_')
-  download.file(ftp, ppt)
-  # Unzip:
-  ppt <- unzip(ppt)
-  # Convert to raster format:
-  ppt <- raster(ppt[1])
-  # Provide projection information:
-  crs(ppt) <- "+proj=longlat +datum=WGS84"
-  return(crop(ppt, rStack[[1]]))
 }
 
 # Function to load monthly tmin raster for a given year (if necessary):
@@ -149,9 +89,9 @@ downloadTminRasterMonthly <- function(year){
     outList[[i]] <- crop(tmin, rStack[[1]])
   }
   writeRaster(overlay(stack(outList), fun = mean), 
-              paste0('tmin', year),
+              paste0(pathToClimateData,'tmin', year),
               overwrite = TRUE)
-  }
+}
 
 # Function to load monthly precipitation raster for a given year (if necessary):
 
@@ -175,7 +115,7 @@ downloadPPTRasterMonthly <- function(year){
     outList[[i]] <- crop(ppt, rStack[[1]])
   }
   writeRaster(overlay(stack(outList), fun = mean), 
-              paste0('ppt', year),
+              paste0(pathToClimateData,'ppt', year),
               overwrite = TRUE)
 }
 
@@ -189,13 +129,13 @@ for(i in 1:length(years)){
   downloadPPTRasterMonthly(years[i])
 }
 
-#---------------------------------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 # ---- GET CELL DATA AND SUMMARIZE SAMPLING EFFORT TO DATE AND CELL ----
-#---------------------------------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
 # Get raster data:
 
-rStack <- loadEnv(paste0(pathToRasterData, 'lc_asc'))
+rStack <- loadEnv(pathToRasterData)
 
 # Raster data to be used for addresses:
 
@@ -292,9 +232,9 @@ for(i in 1:length(years)){
     dplyr::mutate(count = max(count)) %>%
     ungroup %>%
     distinct
-  # Get precipitation and min temperature rasters:
-  pptR <- raster(paste0(pathToRasterData, 'climateRasters/ppt',years[i]))
-  tminR <- raster(paste0(pathToRasterData, 'climateRasters/tmin',years[i]))
+  # Get precipitation and min temperature rasters (these need to be constructed first):
+  pptR <- raster(paste0(pathToClimateData, 'ppt',years[i]))
+  tminR <- raster(paste0(pathToClimateData, 'tmin',years[i]))
   # Extract precip and temperature to points (by cell address):
   samplingSubset$ppt <- raster::extract(pptR, samplingSubset$cellAddress)
   samplingSubset$tmin <- raster::extract(tminR, samplingSubset$cellAddress)
@@ -305,9 +245,9 @@ for(i in 1:length(years)){
 
 samplingAcrossYears <- bind_rows(samplingByYearList)
 
-#---------------------------------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 # ---- ATTACH RUBL SAMPLES FOR A GIVEN CELL AND DATE ----
-#---------------------------------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
 prepSWD <- function(minFlockSize,maxFlockSize, years, protocolChoice = 'all'){
   swdBG <- samplingAcrossYears %>%
@@ -366,6 +306,3 @@ prepSWD <- function(minFlockSize,maxFlockSize, years, protocolChoice = 'all'){
       data.frame
   )
 }
-
-
-
