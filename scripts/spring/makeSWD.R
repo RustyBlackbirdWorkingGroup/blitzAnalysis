@@ -1,7 +1,10 @@
-# Make samples with data file for spring blitz
+# Make samples with data (SWD) file for spring blitz
 #===================================================================================================*
 # ---- SET-UP ----
 #===================================================================================================*
+
+# Smart installer will check list of packages that are installed, install any
+# necessary package that is missing, and load the library:
 
 smartInstallAndLoad <- function(packageVector){
   for(i in 1:length(packageVector)){
@@ -23,29 +26,19 @@ smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
 filter <- dplyr::filter
 select <- dplyr::select
 
-# note: 
-
-# setwd('C:/Users/Brian/Desktop/gits/RUBL/rubl_winter/') # Helm
-# setwd('C:/Users/Default.Default-THINK/Desktop/gits/RUBL/rubl_winter') # Thinkpad
+# Do not read strings as factors:
 
 options(stringsAsFactors = FALSE)
 
 # Set path to land cover data:
 
-# pathToRasterData <- 'C:/Users/Brian/Dropbox/rubl_12_15/'  # Helm
-# pathToRasterData <- '/Users/bsevans/Dropbox/rubl_12_15/'   # MacBook Air
-# pathToRasterData <- 'C:/Users/Default.Default-THINK/Dropbox/rubl_12_15/' # Thinkpad
+# Set path to land cover data (example usage, do not run):
 
-# Set path to eBird list data:
+pathToRasterData <- '/Users/bsevans/Dropbox/rustyBlackbirdData/lc_asc'
 
-# pathToEbirdListData <- 'C:/Users/Brian/Dropbox/eBirdListData.csv'   # Helm
-# pathToEbirdListData <- 'C:/Users/Default.Default-THINK/Dropbox/eBirdListData.csv' # ThinkPad
-# pathToEbirdListData <- '/Users/bsevans/Dropbox/eBirdListData.csv'   # MacBook Air
+# Set path to eBird list data (example usage, do not run):
 
-# Set path to climate rasters (if available):
-# 
-# rasterDirTmin <- 'C:/Users/Brian/Desktop/rubl_summer_2016/minTempRasters/tmin_' # Helm
-# rasterDirPPt <- 'C:/Users/Brian/Desktop/rubl_summer_2016/pptRasters/ppt_' # Helm
+pathToEbirdListData <- '/Users/bsevans/Dropbox/rustyBlackbirdData/eBirdListData.csv'
 
 #===================================================================================================*
 # ---- BIOCLIMATIC DATA ----
@@ -58,45 +51,26 @@ options(stringsAsFactors = FALSE)
 loadEnv <- function(rasterDirectory){
   require(raster)
   # Find the raster data (searches for and ID's all files that end in ".asc":
-  
-  raster_data <- list.files(rasterDirectory,
-                            pattern='\\.asc$', full=T)    
-  
+  rasterFiles <- data.frame(
+    filePath = list.files(rasterDirectory,
+                            pattern='\\.asc$', full=T)
+    ) %>%
+    # Remove precipitation and temperature (only applies to winter):
+    filter(!str_detect(filePath, 'ppt'),
+           !str_detect(filePath, 'tmin')) %>%
+    .$filePath
   # Create a raster stack of raster layers:
-  
-  env.stack <- stack(raster_data)
-  
+  env.stack <- stack(rasterFiles)
   # Add raster stack values to memory:
-  
   values(env.stack) <- getValues(env.stack)
-  
   # Add projection information to the raster stack:
-  
   projection(env.stack) <- CRS('+proj=longlat +datum=WGS84')
-  
-  names(env.stack) <- c('dev_hi','dev_li','flood','forh', 'form', 'grass',
-                        'pasture','ppt','rowcrop', 'shrub','tmin', 'upfor',
-                        'weth', 'wetw', 'woodland')
   return(env.stack)
 }
 
-#***************************************************************************************************
-# RUN SECTION!
-#***************************************************************************************************
-
-# Set path to land cover data:
-
-# pathToRasterData <- 'C:/Users/Brian/Dropbox/rubl_12_15/'  # Helm
-# pathToRasterData <- '/Users/bsevans/Dropbox/rubl_12_15/'   # MacBook Air
-# pathToRasterData <- 'C:/Users/Default.Default-THINK/Dropbox/rubl_12_15/' # Thinkpad
-
 # Get land cover data:
 
-rStack <- loadEnv(paste0(pathToRasterData, 'lc_asc'))
-
-# Remove minimum temperature and precipitation:
-
-rStack <- rStack[[-c(8,11)]]
+rStack <- loadEnv(pathToRasterData)
 
 # Raster data to be used for addresses:
 
@@ -105,9 +79,6 @@ r <- rStack[[1]]
 # Get projection info from raster stack:
 
 projInfo <- raster::projection(r)
-
-#***************************************************************************************************
-#***************************************************************************************************
 
 #---------------------------------------------------------------------------------------------------*
 # ----  FUNCTIONS TO DOWNLOAD CLIMATE DATA, IF NECESSARY ----
@@ -169,10 +140,10 @@ downloadPPTRaster <- function(year, month, day){
   return(crop(ppt, rStack[[1]]))
 }
 
-# Example usage (not run):
-# 
-# downloadTminRaster(year = '2016', month = '03', day = '15')
-# downloadPPTRaster(year = '2016', month = '03', day = '15')
+# Example usage of getting climatic data (do not run):
+
+downloadTminRaster(year = '2016', month = '03', day = '15')
+downloadPPTRaster(year = '2016', month = '03', day = '15')
 
 #---------------------------------------------------------------------------------------------------*
 # ----  FUNCTIONS TO GENERATE PPT AND TMIN RASTERS FOR A GIVEN SAMPLING PERIOD ----
@@ -184,19 +155,12 @@ rasterPrepTminPpt <- function(rasterDirTmin, rasterDirPPt, date){
   # Get ppt and tmin rasters for given date:
   tminR <- raster(paste0(rasterDirTmin, date))
   pptR <- raster(paste0(rasterDirPPt, date))
-  
   # Create a raster stack of raster layers:
-  
   tminPptStack = stack(tminR, pptR)
-  
   # Add raster stack values to memory:
-  
   values(tminPptStack) = getValues(tminPptStack)
-  
   # Add projection information to the raster stack:
-  
   newproj = CRS('+proj=longlat +datum=WGS84')
-  
   names(tminPptStack) = c('tmin','ppt')
   return(tminPptStack)
 }
@@ -263,7 +227,7 @@ periodDateMatch <- function(periodDateValue){
 # ---- PREPARE SAMPLING DATA ----
 #---------------------------------------------------------------------------------------------------*
 
-# Rusty observations:
+# Get Rusty Blackbird observations:
 
 rustyListsSpring <- read.csv('rublEbird.csv') %>%
   tbl_df %>%
