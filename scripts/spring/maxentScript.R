@@ -451,6 +451,9 @@ save.image(diskImage)
 # ---- Area, prevalence, threshold ----
 #----------------------------------------------------------------------------*
 
+# Function to get the predicted area and logistic threshold values for a given
+# model:
+
 getAreaPrevalenceFrame <- function(model){
   results <- model@results %>%
     data.frame
@@ -471,7 +474,13 @@ getAreaPrevalenceFrame <- function(model){
     spread(stat, value)
 }
 
-for(i in 1:length(bestModelPeriod)) names(bestModelPeriod[[i]]) <- c('Small', 'Medium', 'Large')
+# Add the flock names for the best models by period:
+
+for(i in 1:length(bestModelPeriod)){
+  names(bestModelPeriod[[i]]) <- c('Small', 'Medium', 'Large')
+}
+
+# Calculate predicted area for each period and flock size class:
 
 areaPrevalenceByPeriodL <- vector('list', length = 5)
 flockNames <- c('Small', 'Medium', 'Large')
@@ -487,8 +496,13 @@ for(i in 1:5){
   areaPrevalenceByPeriodL[[i]] <- bind_rows(areaPrevalenceByFlock)
 }
 
+# Bind rows into a single data frame:
+
 areaPrevalenceSummary <- bind_rows(areaPrevalenceByPeriodL)
 
+#----------------------------------------------------------------------------*
+# ---- Plot area and prevalence ----
+#----------------------------------------------------------------------------*
 
 cbPallete <- c("#E69F00", "#009E73", "#D55E00")
 
@@ -541,10 +555,7 @@ grid.arrange(
     , ncol=2, widths = c(.95,1.1))
 )
 
-  
-
-
-png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/areaPrevalenceSpring.png",
+png(filename = paste0(outPlotsDir, 'areaPrevalenceSpring.png'),
     width = 11, height = 4.5, units = 'in', res = 300)
 grid.arrange(
   arrangeGrob(
