@@ -495,6 +495,9 @@ save.image(diskImage)
 
 flockNames <- c('Small', 'Medium', 'Large')
 
+envVariables <- c('tmin', 'flood', 'rowcrop', 'ppt', 
+                  'flood', 'pasture', 'dev_hi','weth', 'wetw')
+
 variableContributionByPeriod <- vector('list', length = 5)
 
 for(i in 1:5){
@@ -548,6 +551,89 @@ dataStackedBar <- bind_rows(variableContributionByPeriod) %>%
       )
   )
 
+#-------------------------------------------------------------------------------*
+#---- Kolmogorov-Smirnov tests ---- 
+#-------------------------------------------------------------------------------*
+# A simple test to observe whether distribution of samples about an environemntal
+#variable is distinguishable between two flock size classes
+
+# A sampling frame for K-S analysis and plotting (below):
+
+springSamples <- swdSpring %>%
+  filter(count > 0) %>%
+  mutate(flockSize = ifelse(
+    count < 20,'Small',
+    ifelse(count < 100, 'Medium',
+           'Large')
+  ),
+  samplingPeriod = samplingPeriod %>%
+    factor(
+      levels = c(1:5),
+      labels = c("March 1-14", "March 15-28","March 29-April 11",
+                 "April 12-25","April 26-May 9")
+    ))
+
+# Function to run K-S tests for a given environmental variable and time period:
+
+ksFun <- function(envVar, periodValue){
+  # Set small-medium, small-large, and medium-large comparisons:
+  compareFrame <- data.frame(
+    sp1 = c('Small', 'Small', 'Medium'),
+    sp2 = c('Medium', 'Large', 'Large')
+  )
+  # For each flock size class comparison, get stats:
+  for(i in 1:nrow(compareFrame)){
+    env1 <- springSamples %>%
+      filter(flockSize == compareFrame[i,1],
+             samplingPeriod == periodValue) %>%
+      select_(envVar) %>%
+      as.matrix %>% as.vector
+    env2 <- springSamples %>%
+      filter(flockSize == compareFrame[i,2],
+             samplingPeriod == periodValue) %>%
+      select_(envVar) %>%
+      as.matrix %>% as.vector
+    testOut <- ks.test(env1, env2)
+    compareFrame$D[i] = testOut$statistic
+    compareFrame$p[i] = testOut$p.value
+    compareFrame$meanSp1 <- mean(env1)
+    compareFrame$meanSp2 <- mean(env2)
+  }
+  return(compareFrame)
+}
+
+# Function to run K-S tests across time periods for a given environmental variable:
+
+ksListPeriodFun <- function(envVar){
+  ksListPeriod <- vector('list', length = 5)
+  for(i in 1:5){
+    ksListPeriod[[i]] <- ksFun(envVar, i) %>%
+      mutate(samplingPeriod = i,
+             p = round(p, 3),
+             envVariable = envVar)
+  }
+  bind_rows(ksListPeriod)
+}
+
+# Run KS tests across environmental variables and periods:
+
+ksList <- vector('list', length = length(envVariable))
+
+for(j in 1:length(envVariables)){
+  ksList[[j]] <- ksListPeriodFun(envVariables[j])
+}
+
+# Make list into a data frame:
+
+ksFrame <- bind_rows(ksList)
+
+# To look at output for a given variable and time period, you use the following
+# example as a guide:
+
+ksFrame %>%
+  filter(samplingPeriod == 1,
+         envVariable == 'tmin')
+
 #===============================================================================*
 #---- PLOTTING ---- 
 #===============================================================================*
@@ -555,7 +641,8 @@ dataStackedBar <- bind_rows(variableContributionByPeriod) %>%
 #   1. Suitability maps, 2014 example (due to temperature and precip rasters)
 #   2. AUC
 #   3. Area/prevalence
-#   4. Variable contribution plots. 
+#   4. Variable contribution plots
+#   5. Temperature distribution plots
 
 #-------------------------------------------------------------------------------*
 # ---- Plot suitability maps ----
@@ -840,6 +927,30 @@ gridExtra::grid.arrange(legend,
                           plotNoTemp + theme(legend.position = 'none'),
                           nrow = 2, heights = c(4.5,6)),
                         nrow = 2, heights = c(1, 6))
+dev.off()
+
+
+#-------------------------------------------------------------------------------*
+# ---- Plot temperature distributions ----
+#-------------------------------------------------------------------------------*
+
+tempPlot <- springSamples %>%
+  dplyr::select(samplingPeriod, flockSize, tmin) %>%
+  ggplot(aes(x = tmin)) + 
+  facet_grid(flockSize~samplingPeriod) +
+  geom_density(aes(y = ..scaled..,fill = 'darkgray',  alpha = 0.8)) + 
+  scale_fill_manual(values = cbPallete) + theme_bw() + 
+  ylab('Scaled density') +
+  xlab(expression(Average~minimum~temperature~(degree ~ C))) +
+  theme(
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 15)
+  ) + theme(legend.position="none")
+
+
+png(filename = paste0(outPlotsDir, 'tminSpring.png'), 
+    width = 8.5, height = 5.5, units = 'in', res = 300)
+tempPlot
 dev.off()
 
 #### END ####
