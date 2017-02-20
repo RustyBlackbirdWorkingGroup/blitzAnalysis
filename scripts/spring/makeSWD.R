@@ -30,8 +30,6 @@ select <- dplyr::select
 
 options(stringsAsFactors = FALSE)
 
-# Set path to land cover data:
-
 # Set path to land cover data (example usage, do not run):
 
 pathToRasterData <- '/Users/bsevans/Dropbox/rustyBlackbirdData/lc_asc'
