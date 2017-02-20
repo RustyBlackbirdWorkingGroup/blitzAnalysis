@@ -1,13 +1,18 @@
-# Make samples with data file for winter blitz
-#===================================================================================================*
+# Prepare samples with data file for winter blitz
+#===============================================================================*
 # ---- SET-UP ----
-#===================================================================================================*
+#===============================================================================*
+
+# Smart installer will check list of packages that are installed, install any
+# necessary package that is missing, and load the library:
 
 smartInstallAndLoad <- function(packageVector){
   for(i in 1:length(packageVector)){
     package <- packageVector[i]
     if(!package %in% rownames(installed.packages())){
-      install.packages(packageVector[i],repos="http://cran.rstudio.com/", dependencies=TRUE)
+      install.packages(packageVector[i],
+                       repos="http://cran.rstudio.com/", 
+                       dependencies=TRUE)
     }
   }
   lapply(packageVector, library, character.only = TRUE)
@@ -16,22 +21,26 @@ smartInstallAndLoad <- function(packageVector){
 # Load and potentially install libraries:
 
 smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
-                    'lubridate', 'raster', 'dismo', 'ggplot2'))
+                      'lubridate','raster', 'dismo', 'ggplot2', 'rJava',
+                      'grid', 'gridExtra', 'maps', 'maptools', 'rgeos',
+                      'dismo', 'ggplot2'))
 
-# note: 
-# setwd('C:/Users/Brian/Desktop/gits/RUBL/rubl_winter/') # Helm
-# setwd('C:/Users/Default.Default-THINK/Desktop/gits/RUBL/rubl_winter') # Thinkpad
+# Override some libraries for tidyverse functions:
+
+filter <- dplyr::filter
+select <- dplyr::select
+
+# Do not read strings as factors:
 
 options(stringsAsFactors = FALSE)
 
-# pathToRasterData <- 'C:/Users/Brian/Dropbox/rubl_12_15/'  # Helm
-# pathToRasterData <- '/Users/bsevans/Dropbox/rubl_12_15/'   # MacBook Air
-# pathToRasterData <- 'C:/Users/Default.Default-THINK/Dropbox/rubl_12_15/' # Thinkpad
+# Set path to land cover data (example usage, do not run):
 
+pathToRasterData <- '/Users/bsevans/Dropbox/rustyBlackbirdData/lc_asc'
 
-# pathToEbirdListData <- 'C:/Users/Brian/Dropbox/eBirdListData.csv'   # Helm
-# pathToEbirdListData <- 'C:/Users/Default.Default-THINK/Dropbox/eBirdListData.csv' # ThinkPad
-# pathToEbirdListData <- '/Users/bsevans/Dropbox/eBirdListData.csv'   # MacBook Air
+# Set path to eBird list data (example usage, do not run):
+
+pathToEbirdListData <- '/Users/bsevans/Dropbox/rustyBlackbirdData/eBirdListData.csv'
 
 #---------------------------------------------------------------------------------------------------*
 # ---- FUNCTIONS ----
@@ -62,7 +71,7 @@ loadEnv <- function(rasterDirectory){
   return(env.stack)
 }
 
-# Load tmin raster for a given date:
+# Function to load tmin raster for a given date (if necessary):
 
 downloadTminRaster <- function(year, month, day){
   yearMonth <- paste0(year, '0', month, '00') %>% as.numeric
@@ -90,6 +99,8 @@ downloadTminRaster <- function(year, month, day){
   return(crop(tmin, rStack[[1]]))
 }
 
+# Function to load precipitation raster for a given date (if necessary):
+
 downloadPPTRaster <- function(year, month, day){
   yearMonth <- paste0(year, '0', month, '00') %>% as.numeric
   date <- yearMonth + day
@@ -116,7 +127,7 @@ downloadPPTRaster <- function(year, month, day){
   return(crop(ppt, rStack[[1]]))
 }
 
-# Load tmin raster for a given date:
+# Function to load monthly tmin raster for a given year (if necessary):
 
 downloadTminRasterMonthly <- function(year){
   month = c('01', '02')
@@ -142,6 +153,7 @@ downloadTminRasterMonthly <- function(year){
               overwrite = TRUE)
   }
 
+# Function to load monthly precipitation raster for a given year (if necessary):
 
 downloadPPTRasterMonthly <- function(year){
   month = c('01', '02')
@@ -166,13 +178,16 @@ downloadPPTRasterMonthly <- function(year){
               paste0('ppt', year),
               overwrite = TRUE)
 }
-# 
-# years <- 2006:2016
-# 
-# for(i in 1:length(years)){
-#   downloadTminRasterMonthly(years[i])
-#   downloadPPTRasterMonthly(years[i])
-# }
+
+# To run the above, for years from 2009 to 2011 (only run if you're willing to
+# wait!):
+
+years <- 2009:2011
+
+for(i in 1:length(years)){
+  downloadTminRasterMonthly(years[i])
+  downloadPPTRasterMonthly(years[i])
+}
 
 #---------------------------------------------------------------------------------------------------*
 # ---- GET CELL DATA AND SUMMARIZE SAMPLING EFFORT TO DATE AND CELL ----
@@ -231,7 +246,7 @@ eBirdLists <- read.csv(pathToEbirdListData) %>%
   # Change na counts (no observation match) to 0:
   mutate(count = ifelse(is.na(count), 0, count))
 
-# Add cell addresses
+# Add cell addresses:
 
 eBirdLists$cellAddress <- cellFromXY(
   r,
