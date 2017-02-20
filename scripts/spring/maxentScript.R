@@ -18,6 +18,14 @@ smartInstallAndLoad <- function(packageVector){
 smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
                       'lubridate','raster', 'dismo', 'ggplot2', 'rJava'))
 
+# Set outPlots directory (example):
+
+outPlotsDir <- 'C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/'
+
+# Because several steps in the process takes a while to run, I save the disk image at several pts:
+
+diskImage <- 'spring_10-13.RData'
+
 # IMPORTANT! Prior to running the below, run the file "makeSWD.R"
 # Also, in order to run this script, you need to place the maxent jar file in the folder: win-library/[version]/dismo/java
 
@@ -203,7 +211,7 @@ for(i in 1:length(betaPeriods)){
   betaPeriods[[i]] <- betaFlock
 }
 
-save.image('spring_10-13.RData')
+save.image(diskImage)
 
 # OUTPUT (because the above takes a while to run):
 # Also note, there are some funky values in the above (due to sampling a subset, looking for overall pattern in AIC)
@@ -226,7 +234,7 @@ betaByPeriod[[5]] <- c(11, 10, 3)
 
 # I save the disk image below, due to long run time:
 
-save.image('spring_10-12.RData')
+save.image(diskImage)
 
 # To look at AICc's, you can use the below:
 
@@ -254,7 +262,7 @@ for(i in 1:length(bestModelPeriod)){
 
 # I save the disk image below, due to long run time:
 
-save.image('spring_10-12.RData')
+save.image(diskImage)
 
 #----------------------------------------------------------------------------*
 # ---- Get AUC values associated with test points ----
@@ -354,7 +362,7 @@ summaryAUC <- bind_rows(aucPeriod)
 
 # I save the disk image below, due to long run time:
 
-save.image('spring_10-12.RData')
+save.image(diskImage)
 
 #----------------------------------------------------------------------------*
 # ---- Plot AUC by observation type ----
@@ -380,9 +388,9 @@ aucPlot <- ggplot(
   theme(legend.key = element_blank()) +
   theme(axis.title = element_text(size = 15))
 
-# Set outPlots directory (example):
+# Save plot to outplots directory:
 
-png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/aucSpring.png",
+png(filename = paste0(outPlotsDir, 'aucSpring.png'),
     width = 9, height = 4.5, units = 'in', res = 300)
 aucPlot + 
   scale_x_continuous(
@@ -431,10 +439,11 @@ for(i in 1:5){
 
 bestModelPredictions[[5]][[3]] <- NULL
 
+# Take a cursory look at output:
+
 for(i in 1:5) plot(bestModelPredictions[[i]][[2]])
 
-
-save.image('spring_10-12.RData')
+save.image(diskImage)
 
 # To plot these, go to script plotSuitabilityMaps.R
 
