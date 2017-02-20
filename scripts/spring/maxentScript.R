@@ -33,6 +33,10 @@ outPlotsDir <- 'C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/'
 
 diskImage <- 'spring_10-13.RData'
 
+# Likewise, the location to save RDS files due to long run times:
+
+saveRDSlocation <- 'C:/Users/Brian/Dropbox/randomRUBLmodels/'
+
 # IMPORTANT! Prior to running the below, run the file "makeSWD.R" Also, in order
 # to run this script, you need to place the maxent jar file in the folder: 
 # win-library/[version]/dismo/java
@@ -606,7 +610,8 @@ randomSWDpair <- function(swd1, swd2){
     dplyr:: bind_rows(bgPoints)
 }
 
-# Make random prediction models. Because the result will be large, save as RDS rather than store in memory:
+# Make random prediction models. Because the result will be large, save as RDS
+# rather than store in memory:
 
 # Empty matrices for output
 
@@ -620,16 +625,12 @@ for(i in 1:10000){
   modLM <- runMaxentAreaPrevalence(swdRandomLM, bestModelLarge, 1)
   modMS <- runMaxentAreaPrevalence(swdRandomMS, bestModelMedium, 1.4)
   # Save random models:
-  saveLoc <- 'C:/Users/Brian/Dropbox/randomRUBLmodels/'
-  saveRDS(modLS, paste0(saveLoc, 'modLS', i, '.rds'))
-  saveRDS(modLM, paste0(saveLoc, 'modLM', i, '.rds'))
-  saveRDS(modMS, paste0(saveLoc, 'modMS', i, '.rds'))
+  saveRDS(modLS, paste0(saveRDSlocation, 'modLS', i, '.rds'))
+  saveRDS(modLM, paste0(saveRDSlocation, 'modLM', i, '.rds'))
+  saveRDS(modMS, paste0(saveRDSlocation, 'modMS', i, '.rds'))
 }
 
 # Read in rds files, and fill matrices:
-
-# RDSlocation <- 'C:/Users/Brian/Dropbox/randomRUBLmodels'
-
 
 modCombos <- c('modLS', 'modLM','modMS')
 
