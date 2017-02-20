@@ -1,13 +1,18 @@
 # maxent script for spring blitz
-#===================================================================================================*
+#===============================================================================*
 # ---- SET-UP ----
-#===================================================================================================*
+#===============================================================================*
+
+# Smart installer will check list of packages that are installed, install any
+# necessary package that is missing, and load the library:
 
 smartInstallAndLoad <- function(packageVector){
   for(i in 1:length(packageVector)){
     package <- packageVector[i]
     if(!package %in% rownames(installed.packages())){
-      install.packages(packageVector[i],repos="http://cran.rstudio.com/", dependencies=TRUE)
+      install.packages(packageVector[i],
+                       repos="http://cran.rstudio.com/", 
+                       dependencies=TRUE)
     }
   }
   lapply(packageVector, library, character.only = TRUE)
@@ -16,22 +21,25 @@ smartInstallAndLoad <- function(packageVector){
 # Load and potentially install libraries:
 
 smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
-                      'lubridate','raster', 'dismo', 'ggplot2', 'rJava'))
+                      'lubridate','raster', 'dismo', 'ggplot2', 'rJava',
+                      'gridExtra'))
 
 # Set outPlots directory (example):
 
 outPlotsDir <- 'C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/'
 
-# Because several steps in the process takes a while to run, I save the disk image at several pts:
+# Because several steps in the process takes a while to run, I save the disk
+# image at several pts:
 
 diskImage <- 'spring_10-13.RData'
 
-# IMPORTANT! Prior to running the below, run the file "makeSWD.R"
-# Also, in order to run this script, you need to place the maxent jar file in the folder: win-library/[version]/dismo/java
+# IMPORTANT! Prior to running the below, run the file "makeSWD.R" Also, in order
+# to run this script, you need to place the maxent jar file in the folder: 
+# win-library/[version]/dismo/java
 
-#----------------------------------------------------------------------------*
-# Basic functions:
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
+# ---- Basic functions----
+#-------------------------------------------------------------------------------*
 
 se <- function(x) {sd(x)/sqrt(length(x))}
 
@@ -43,9 +51,9 @@ cropRasterByMinLat <- function(rLayer, minLat){
   crop(rLayer, extentR)
 }
 
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 # Get swd (across observation types):
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
 swdList <- vector('list', length = 5)
 
@@ -58,9 +66,9 @@ for(i in 1:length(swdList)){
   swdList[[i]] <- flockList
 }
 
-#===================================================================================================*
+#===============================================================================*
 # ---- MODEL RUNNING AND CALIBRATION ----
-#===================================================================================================*
+#===============================================================================*
 
 # Basic function to run a model:
 
@@ -111,7 +119,7 @@ maxentRunReduced <- function(swd, betaMultiplier,
   return(modelReduced)
 }
 
-# Get the contribution of environmental variables for a given model:
+# Function to get the contribution of environmental variables for a given model:
 
 getVariableContribution <- function(model){
   modelResults <- model@results %>% data.frame
@@ -125,7 +133,7 @@ getVariableContribution <- function(model){
   return(variableContribution)  
 }
 
-# Get a vector of variables to remove from a given model:
+# Function to get a vector of variables to remove from a given model:
 
 variablesToRemove <- function(model){
   getVariableContribution(model) %>%
@@ -133,8 +141,7 @@ variablesToRemove <- function(model){
   .$variable
 }
 
-
-# Read the lambda file associated with a given model
+# Function to read the lambda file associated with a given model
 
 readLambdaFile <- function(model){
   lambdaData <- model@lambdas
@@ -144,9 +151,7 @@ readLambdaFile <- function(model){
     dplyr::select(variable = V1, lambda = V2)
 }
 
-#----------------------------------------------------------------------------*
-# Calculate AIC:
-#----------------------------------------------------------------------------*
+# Function to calculate AIC for a given swd file and beta multiplier:
 
 calcAIC <- function(swd, betaMultiplier) {
   # Point data, all:
@@ -185,9 +190,8 @@ calcAIC <- function(swd, betaMultiplier) {
   return(aicFrame)
 }
 
-#----------------------------------------------------------------------------*
-# Assess AICc values across beta values and output a table of results:
-#----------------------------------------------------------------------------*
+# Function to assess AICc values across beta values and output a table of
+# results:
 
 betaFinder <- function(swd, betaValues){
   out <- data.frame(matrix(nrow = length(betaValues),ncol = 3))
@@ -197,6 +201,13 @@ betaFinder <- function(swd, betaValues){
   colnames(out) <- c('nparm', 'beta','AICc')
   out
 }
+
+#-------------------------------------------------------------------------------*
+# ---- Calibrate models ----
+#-------------------------------------------------------------------------------*
+
+# For a set of beta values from 1-15 and each beta period, get the best beta
+# multiplier:
 
 betaValues <- seq(1, 15, 1)
 
@@ -210,6 +221,8 @@ for(i in 1:length(betaPeriods)){
   betaFlock$Large <- betaFinder(swdList[[i]]$Large, betaValues)
   betaPeriods[[i]] <- betaFlock
 }
+
+# Save the disk image below, due to long run time:
 
 save.image(diskImage)
 
@@ -232,7 +245,7 @@ betaByPeriod[[4]] <- c(11, 9, 3)
 
 betaByPeriod[[5]] <- c(11, 10, 3)
 
-# I save the disk image below, due to long run time:
+# Save the disk image below, due to long run time:
 
 save.image(diskImage)
 
@@ -242,9 +255,9 @@ betaPeriods[[1]]$Large %>%
   arrange(AICc) %>%
   mutate(dAIC = AICc - min(AICc))
 
-#===================================================================================================*
+#===============================================================================*
 # ---- MODEL EVALUATION ----
-#===================================================================================================*
+#===============================================================================*
 
 # Get best models:
 
@@ -264,9 +277,9 @@ for(i in 1:length(bestModelPeriod)){
 
 save.image(diskImage)
 
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 # ---- Get AUC values associated with test points ----
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
 # Function to run maxent model and return AUC for a given cross-validation fold:
 
@@ -364,11 +377,15 @@ summaryAUC <- bind_rows(aucPeriod)
 
 save.image(diskImage)
 
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 # ---- Plot AUC by observation type ----
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
-cbPallete <- c("#E69F00", "#009E73", "#D55E00")
+# Color blind palette:
+
+cbPalette <- c("#E69F00", "#009E73", "#D55E00")
+
+# Plot AUC:
 
 aucPlot <- ggplot(
   summaryAUC %>%
@@ -382,7 +399,7 @@ aucPlot <- ggplot(
   theme_bw() +
   ylab('AUC') +
   xlab('Observation period') +
-  scale_color_manual(values = cbPallete, guide = guide_legend(title = 'Flock size')) +
+  scale_color_manual(values = cbPalette, guide = guide_legend(title = 'Flock size')) +
   geom_line(size = 1, position=position_dodge(width=0.1)) +
   theme(axis.title = element_text(margin=margin(0,10,0,0))) +
   theme(legend.key = element_blank()) +
@@ -400,9 +417,11 @@ aucPlot +
   )
 dev.off()
 
-#----------------------------------------------------------------------------*
-# ---- Make model predictions (raster maps) ----
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
+# ---- Predict models to raster ----
+#-------------------------------------------------------------------------------*
+# Example = 2014
+# Set periods:
 
 periodValues <- 1:5
 
@@ -447,9 +466,9 @@ save.image(diskImage)
 
 # To plot these, go to script plotSuitabilityMaps.R
 
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 # ---- Area, prevalence, threshold ----
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
 # Function to get the predicted area and logistic threshold values for a given
 # model:
@@ -500,11 +519,15 @@ for(i in 1:5){
 
 areaPrevalenceSummary <- bind_rows(areaPrevalenceByPeriodL)
 
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 # ---- Plot area and prevalence ----
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
-cbPallete <- c("#E69F00", "#009E73", "#D55E00")
+# Color blind palette:
+
+cbPalette <- c("#E69F00", "#009E73", "#D55E00")
+
+# Plot area:
 
 areaPlot <- ggplot(
   areaPrevalenceSummary %>%
@@ -515,7 +538,7 @@ areaPlot <- ggplot(
   ylab('Fractional Predicted Area') +
   xlab('Observation period') +
   ylim(.18, .41) +
-  scale_color_manual(values = cbPallete, guide = guide_legend(title = 'Flock size')) +
+  scale_color_manual(values = cbPalette, guide = guide_legend(title = 'Flock size')) +
   geom_line(size = 1, position=position_dodge(width=0.1)) +
   theme(axis.title = element_text(margin=margin(0,10,0,0))) +
   theme(legend.key = element_blank()) +
@@ -526,6 +549,8 @@ areaPlot <- ggplot(
                "Apr. 12 - 25","Apr. 26 - May 9")
   )
 
+# Plot prevalence:
+
 prevalencePlot <- ggplot(
   areaPrevalenceSummary %>%
     filter(!(flockSize == 'Large' & samplingPeriod == 5)),
@@ -535,7 +560,7 @@ prevalencePlot <- ggplot(
   ylab('Prevalence') +
   xlab('Observation period') +
   ylim(.18, .41) +
-  scale_color_manual(values = cbPallete, guide = guide_legend(title = 'Flock size')) +
+  scale_color_manual(values = cbPalette, guide = guide_legend(title = 'Flock size')) +
   geom_line(size = 1, position=position_dodge(width=0.1)) +
   theme(axis.title = element_text(margin=margin(0,10,0,0))) +
   theme(legend.key = element_blank()) +
@@ -545,6 +570,8 @@ prevalencePlot <- ggplot(
     labels = c("Mar. 1-14", "Mar. 15-28","Mar. 29-Apr. 11",
                "Apr. 12 - 25","Apr. 26 - May 9")
   )
+
+# Arrange as grid and save:
 
 png(filename = paste0(outPlotsDir, 'areaPrevalenceSpring.png'),
     width = 11, height = 4.5, units = 'in', res = 300)
@@ -558,7 +585,9 @@ grid.arrange(
 )
 dev.off()
 
-
+#-------------------------------------------------------------------------------*
+# ---- Random swd's for testing ----
+#-------------------------------------------------------------------------------*
 
 # Function to generate a random sample of flock size 1 by flock size 2
 # Note: Flock size 1 is the flocks size of interest, comparison to flock size 2
@@ -620,10 +649,10 @@ for(i in 1:length(outList)){
 
 permutationFrame <- bind_rows(outList)
 
-cbPallete <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
                         "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
-cbPallete <- c("#E69F00", "#009E73",
+cbPalette <- c("#E69F00", "#009E73",
                "#0072B2", "#D55E00", "#CC79A7")
 
 # Predicted area plots
@@ -638,7 +667,7 @@ predictedAreaLFplot <- ggplot(permutationFrame %>%
          dplyr::filter(permuted != 'Medium-Small'),
        aes(x=area)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
-  scale_fill_manual(values = cbPallete) +
+  scale_fill_manual(values = cbPalette) +
   geom_segment(data = getAreaPrevalenceFrame(bestModelLarge,1),
                aes(x = area, xend = area, y = 0, yend = 35),
                size = 2, linetype = 1, lineend = 'round') +
@@ -662,7 +691,7 @@ predictedAreaMFplot <- ggplot(permutationFrame %>%
                                 dplyr::filter(permuted != 'Large-Small'),
                               aes(x=area)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
-  scale_fill_manual(values = cbPallete[-c(1:2)]) +
+  scale_fill_manual(values = cbPalette[-c(1:2)]) +
   geom_segment(data = getAreaPrevalenceFrame(bestModelMedium,1),
                aes(x = area, xend = area, y = 0, yend = 35),
                size = 1.5, linetype = 1, lineend = 'round') +
@@ -687,7 +716,7 @@ predictedPrevalenceLFplot <- ggplot(permutationFrame %>%
                                 dplyr::filter(permuted != 'Medium-Small'),
                               aes(x=prevalence)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
-  scale_fill_manual(values = cbPallete) +
+  scale_fill_manual(values = cbPalette) +
   geom_segment(data = getAreaPrevalenceFrame(bestModelLarge,1),
                aes(x = prevalence, xend = prevalence, y = 0, yend = 35),
                size = 1.5, linetype = 1, lineend = 'round') +
@@ -711,7 +740,7 @@ predictedPrevalenceMFplot <- ggplot(permutationFrame %>%
                                 dplyr::filter(permuted != 'Large-Small'),
                               aes(x=prevalence)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
-  scale_fill_manual(values = cbPallete[-c(1:2)]) +
+  scale_fill_manual(values = cbPalette[-c(1:2)]) +
   geom_segment(data = getAreaPrevalenceFrame(bestModelMedium,1),
                aes(x = prevalence, xend = prevalence, y = 0, yend = 35),
                size = 1.5, linetype = 1, lineend = 'round') +
@@ -725,8 +754,6 @@ predictedPrevalenceMFplot <- ggplot(permutationFrame %>%
   ylim(0, 38)
 
 
-  
-# library(gridExtra)
 png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/areaPrevalence.png",
     width = 12, height = 4.5, units = 'in', res = 300)
 grid.arrange(
