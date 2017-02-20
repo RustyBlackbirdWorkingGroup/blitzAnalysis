@@ -18,6 +18,11 @@ smartInstallAndLoad <- function(packageVector){
 smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
                       'lubridate', 'raster', 'dismo', 'ggplot2'))
 
+# Override some libraries for tidyverse functions:
+
+filter <- dplyr::filter
+select <- dplyr::select
+
 # note: 
 
 # setwd('C:/Users/Brian/Desktop/gits/RUBL/rubl_winter/') # Helm
@@ -79,7 +84,13 @@ loadEnv <- function(rasterDirectory){
 # RUN SECTION!
 #***************************************************************************************************
 
-# Get raster data:
+# Set path to land cover data:
+
+# pathToRasterData <- 'C:/Users/Brian/Dropbox/rubl_12_15/'  # Helm
+# pathToRasterData <- '/Users/bsevans/Dropbox/rubl_12_15/'   # MacBook Air
+# pathToRasterData <- 'C:/Users/Default.Default-THINK/Dropbox/rubl_12_15/' # Thinkpad
+
+# Get land cover data:
 
 rStack <- loadEnv(paste0(pathToRasterData, 'lc_asc'))
 
@@ -91,6 +102,8 @@ rStack <- rStack[[-c(8,11)]]
 
 r <- rStack[[1]]
 
+# Get projection info from raster stack:
+
 projInfo <- raster::projection(r)
 
 #***************************************************************************************************
@@ -100,7 +113,7 @@ projInfo <- raster::projection(r)
 # ----  FUNCTIONS TO DOWNLOAD CLIMATE DATA, IF NECESSARY ----
 #---------------------------------------------------------------------------------------------------*
 
-# Function to download tmin raster for a given date, if necessary:
+# Function to download the minimum temperature raster for a given date:
 
 downloadTminRaster <- function(year, month, day){
   yearMonth <- paste0(year, '0', month, '00') %>% as.numeric
@@ -128,8 +141,7 @@ downloadTminRaster <- function(year, month, day){
   return(crop(tmin, rStack[[1]]))
 }
 
-
-# Function to download climate data for a given data, if necessary:
+# Function to download the precipitation raster a given data:
 
 downloadPPTRaster <- function(year, month, day){
   yearMonth <- paste0(year, '0', month, '00') %>% as.numeric
@@ -161,7 +173,6 @@ downloadPPTRaster <- function(year, month, day){
 # 
 # downloadTminRaster(year = '2016', month = '03', day = '15')
 # downloadPPTRaster(year = '2016', month = '03', day = '15')
-
 
 #---------------------------------------------------------------------------------------------------*
 # ----  FUNCTIONS TO GENERATE PPT AND TMIN RASTERS FOR A GIVEN SAMPLING PERIOD ----
@@ -244,7 +255,7 @@ summarizeClimate <- function(rasterDirTmin, rasterDirPPt, periodValue, yearValue
 
 periodDateMatch <- function(periodDateValue){
   periodDates %>%
-    dplyr::filter(dates == periodDateValue) %>%
+    filter(dates == periodDateValue) %>%
     .$period
 }
 
@@ -256,8 +267,8 @@ periodDateMatch <- function(periodDateValue){
 
 rustyListsSpring <- read.csv('rublEbird.csv') %>%
   tbl_df %>%
-  #dplyr::filter to study extent:
-   dplyr::filter(lon > extent(r)[1] & lon < extent(r)[2],
+  #filter to study extent:
+   filter(lon > extent(r)[1] & lon < extent(r)[2],
          lat > extent(r)[3] & lat < extent(r)[4]) %>%
   # Subset to dates associated with the spring blitz:
   mutate(date = as.Date(date)) %>%
@@ -265,23 +276,23 @@ rustyListsSpring <- read.csv('rublEbird.csv') %>%
 #   mutate(month = lubridate::month(date),
 #          day = lubridate::day(date)) %>%
   # Remove counts recorded as 'X':
- dplyr::filter(count != 'X') %>%
+ filter(count != 'X') %>%
   mutate(count = as.numeric(count)) %>%
-  dplyr::select(observationID, count)
+  select(observationID, count)
 
 # Make a vector of rusty lists where count is recorded as 'X':
 
 rustyXobservations <- read.csv('rublEbird.csv') %>%
- dplyr::filter(count == 'X') %>%
+ filter(count == 'X') %>%
   .$observationID
 
 # Get eBird list data:
 
 eBirdListsSpring <- read.csv(pathToEbirdListData) %>%
-  dplyr::select(observationID, lat, lon, date) %>%
+  select(observationID, lat, lon, date) %>%
   tbl_df %>%
-  #dplyr::filter to the study extent and study dates:
-  dplyr::filter(lon > extent(r)[1] & lon < extent(r)[2],
+  #filter to the study extent and study dates:
+  filter(lon > extent(r)[1] & lon < extent(r)[2],
                 lat > extent(r)[3] & lat < extent(r)[4]) %>% #,
 #                 lubridate::year(date) %in% 2014:2016,
 #                 lubridate::month(date) %in% 3:5) %>%
@@ -290,21 +301,21 @@ eBirdListsSpring <- read.csv(pathToEbirdListData) %>%
   mutate(year = lubridate::year(date)) %>%
 #   mutate(samplingPeriod = periodDateMatch(as.Date(date))) %>%
   # Remove observationIDs where rusty count was reported as X:
-  dplyr::filter(!observationID %in% rustyXobservations) %>%
+  filter(!observationID %in% rustyXobservations) %>%
   # Add count data:
   left_join(rustyListsSpring, by = 'observationID') %>%
   # Change na counts (no observation match) to 0:
   mutate(count = ifelse(is.na(count), 0, count)) %>%
   # Add period data:
   inner_join(periodDates %>%
-               dplyr::select(-year), by = 'date')
+               select(-year), by = 'date')
 
 # Add cell addresses:
 
 eBirdListsSpring$cellAddress <- cellFromXY(
   r,
   eBirdListsSpring %>%
-    dplyr::select(lon, lat) %>%
+    select(lon, lat) %>%
     data.frame %>%
     SpatialPoints(proj4string = CRS(projInfo)) 
 )
@@ -321,7 +332,7 @@ eBirdListsSpring$cellAddress <- cellFromXY(
 # eBirdListsSpring1 <- eBirdListsSpring %>%
 #   inner_join(minLats, by = 'date') %>%
 #   filter(lat >= minLat) %>%
-#   dplyr::select(-minLat)
+#   select(-minLat)
 
 # Summarize:
 
@@ -346,7 +357,7 @@ springSampling <- eBirdListsSpring %>%
 #     df = TRUE)
 # ) %>%
 #   tbl_df %>%
-#   dplyr::select(-ID)
+#   select(-ID)
 # 
 # 
 # samplingEnvSpring1 <- inner_join(
@@ -358,7 +369,7 @@ springSampling <- eBirdListsSpring %>%
 #   .$date %>% unique
 # 
 # cellDate <-  samplingEnvSpring1 %>%
-#   dplyr::select(cellAddress, date)
+#   select(cellAddress, date)
 #   
 # tminPPtList<- vector('list', length = length(dateValues))
 # 
@@ -385,7 +396,7 @@ springSampling <- eBirdListsSpring %>%
 #   ) %>%
 #   mutate(doy = lubridate::week(date),
 #          tmin2 = tmin^2) %>%
-#   dplyr::select(count, doy, dev_hi:woodland, ppt, tmin, tmin2)
+#   select(count, doy, dev_hi:woodland, ppt, tmin, tmin2)
 # 
 # swdSpring1 %>%
 #   filter(count > 20) %>%
@@ -397,15 +408,15 @@ springSampling <- eBirdListsSpring %>%
 # prepSWD1 <- function(minFlockSize, maxFlockSize){
 #   bind_rows(
 #     swdSpring1 %>%
-#       dplyr::filter(count == 0) %>%
+#       filter(count == 0) %>%
 #       mutate(pa = 0,
 #              k = NA),
 #     swdSpring1 %>%
-#       dplyr::filter(count >= minFlockSize & count <= maxFlockSize) %>%
+#       filter(count >= minFlockSize & count <= maxFlockSize) %>%
 #       mutate(pa = 1,
 #              k = dismo::kfold(x = pa, k = 5, by = pa))
 #   ) %>%
-#     dplyr::select(pa, doy:tmin2, k)
+#     select(pa, doy:tmin2, k)
 # }
 # 
 # swd <- prepSWD1(90, Inf)
@@ -417,23 +428,23 @@ springSampling <- eBirdListsSpring %>%
 #                       kFold = 'noCrossValidate', excludeVariables = NULL){
 #   if(!is.null(excludeVariables)){
 #     swd <- swd %>%
-#       dplyr::select(-one_of(excludeVariables))
+#       select(-one_of(excludeVariables))
 #   }
 #   swdAbsence <- swd %>%
-#     dplyr::filter(pa == 0) %>%
+#     filter(pa == 0) %>%
 #     dplyr::sample_n(10000, replace = FALSE)
 #   # Create input file of k fold:
 #   if(kFold != 'noCrossValidate'){
 #     swdTrain <- swd %>%
-#       dplyr::filter(k != kFold & pa == 1) %>%
+#       filter(k != kFold & pa == 1) %>%
 #       bind_rows(swdAbsence) %>%
-#       dplyr::select(-k) %>%
+#       select(-k) %>%
 #       data.frame
 #   } else {
 #     swdTrain <- swd %>%
-#       dplyr::filter(pa == 1) %>%
+#       filter(pa == 1) %>%
 #       bind_rows(swdAbsence) %>%
-#       dplyr::select(-k) %>%
+#       select(-k) %>%
 #       data.frame
 #   }
 #   # Set model arguments
@@ -454,21 +465,21 @@ springSampling <- eBirdListsSpring %>%
 #     .$variable
 #   # Remove environmental variables not used in this model:
 #   swdReduced <- swd %>%
-#     dplyr::select(pa, k) %>%
+#     select(pa, k) %>%
 #     bind_cols(
-#       swd %>% dplyr::select(one_of(variablesToInclude))
+#       swd %>% select(one_of(variablesToInclude))
 #     )
 #   # Make background, training, and test points:
 #   swdAbsence <- swdReduced %>%
-#     dplyr::filter(pa == 0)
+#     filter(pa == 0)
 #   swdTrain <- swdReduced %>%
-#     dplyr::filter(k != kFold & pa == 1) %>%
+#     filter(k != kFold & pa == 1) %>%
 #     bind_rows(swdAbsence) %>%
-#     dplyr::select(-k) %>%
+#     select(-k) %>%
 #     data.frame
 #   swdTest <- swdReduced %>%
-#     dplyr::filter(k == kFold & pa == 1) %>%
-#     dplyr::select(-k) %>%
+#     filter(k == kFold & pa == 1) %>%
+#     select(-k) %>%
 #     data.frame
 #   # Set model arguments
 #   modArguments <- c('nothreshold', 'nohinge', 'noquadratic',
@@ -482,7 +493,7 @@ springSampling <- eBirdListsSpring %>%
 #   # Predict model values at test points:
 #   predictionPresence <- dismo::predict(maxentModel1, swdTest)
 #   predictionAbsence <- dismo::predict(maxentModel1,swdAbsence %>%
-#                                         dplyr::select(-c(pa, k)))
+#                                         select(-c(pa, k)))
 #   # Evaluate model:
 #   dismo::evaluate(p = predictionPresence, a = predictionAbsence)@auc
 # }
@@ -547,7 +558,7 @@ envByCell <- data.frame(
     df = TRUE)
 ) %>%
   tbl_df %>%
-  dplyr::select(-ID)
+  select(-ID)
 
 # Join sampling data to environment data and add year field:
 
@@ -555,7 +566,7 @@ samplingEnvSpring <- left_join(
   springSampling,
   envByCell,
   by = 'cellAddress') %>%
-  dplyr::filter(!is.na(dev_hi))
+  filter(!is.na(dev_hi))
 
 # Function to extract precip and tmin data for a given cell:
 
@@ -573,7 +584,7 @@ samplingWithClimateFun <- function(rasterDirTmin, rasterDirPPt, periodValue, yea
       y = (samplingSubset$cellAddress %>% unique),
       df = TRUE)) %>%
     tbl_df %>%
-    dplyr::select(-ID)
+    select(-ID)
   # Join to sampling subset associated with period and year value:
   samplingSubsetEnv <- left_join(
     samplingSubset,
@@ -598,8 +609,8 @@ for(i in 1:5){
 }
 
 swdSpring <- bind_rows(outListPeriod) %>%
-  dplyr::select(-year) %>%
-  dplyr::filter(!is.na(tmin))
+  select(-year) %>%
+  filter(!is.na(tmin))
 
 #---------------------------------------------------------------------------------------------------*
 # ---- PREPARE SAMPLES ----
@@ -609,34 +620,34 @@ swdSpring <- bind_rows(outListPeriod) %>%
 
 prepSWD <- function(swdIn, minFlockSize, maxFlockSize, samplingPeriodValue){
   swdSamplingPeriod <- swdIn %>%
-    dplyr::filter(samplingPeriod == samplingPeriodValue)
+    filter(samplingPeriod == samplingPeriodValue)
   bind_rows(
     swdSamplingPeriod %>%
-      dplyr::filter(count == 0) %>%
+      filter(count == 0) %>%
       mutate(pa = 0,
              k = NA),
     swdSamplingPeriod %>%
-      dplyr::filter(count >= minFlockSize & count <= maxFlockSize) %>%
+      filter(count >= minFlockSize & count <= maxFlockSize) %>%
       mutate(pa = 1,
              k = dismo::kfold(x = pa, k = 5, by = pa))
   ) %>%
-    dplyr::select(cellAddress, pa, dev_hi:tmin2, k)
+    select(cellAddress, pa, dev_hi:tmin2, k)
 }
   
 
 # prepSWDtest <- function(swdIn, minFlockSize, maxFlockSize){
 #   bind_rows(
 #     swdIn %>%
-#       dplyr::filter(count == 0) %>%
+#       filter(count == 0) %>%
 #       mutate(pa = 0,
 #              k = NA),
 #     swdIn %>%
-#       dplyr::filter(count >= minFlockSize & count <= maxFlockSize) %>%
+#       filter(count >= minFlockSize & count <= maxFlockSize) %>%
 #       mutate(pa = 1,
 #              k = dismo::kfold(x = pa, k = 5, by = pa))
 #   ) %>%
 #     mutate(samplingPeriod = factor(samplingPeriod)) %>%
-#     dplyr::select(pa, samplingPeriod, dev_hi:tmin2, k)
+#     select(pa, samplingPeriod, dev_hi:tmin2, k)
 # }
 # 
 # modT <- maxentRun(prepSWDtest(swdSpring, 90, Inf), 0, kFold = 'noCrossValidate', excludeVariables = NULL)
@@ -646,23 +657,23 @@ prepSWD <- function(swdIn, minFlockSize, maxFlockSize, samplingPeriodValue){
 #                       kFold = 'noCrossValidate', excludeVariables = NULL){
 #   if(!is.null(excludeVariables)){
 #     swd <- swd %>%
-#       dplyr::select(-one_of(excludeVariables))
+#       select(-one_of(excludeVariables))
 #   }
 #   swdAbsence <- swd %>%
-#     dplyr::filter(pa == 0) %>%
+#     filter(pa == 0) %>%
 #   dplyr::sample_n(10000, replace = FALSE)
 #   # Create input file of k fold:
 #   if(kFold != 'noCrossValidate'){
 #     swdTrain <- swd %>%
-#       dplyr::filter(k != kFold & pa == 1) %>%
+#       filter(k != kFold & pa == 1) %>%
 #       bind_rows(swdAbsence) %>%
-#       dplyr::select(-k) %>%
+#       select(-k) %>%
 #       data.frame
 #   } else {
 #     swdTrain <- swd %>%
-#       dplyr::filter(pa == 1) %>%
+#       filter(pa == 1) %>%
 #       bind_rows(swdAbsence) %>%
-#       dplyr::select(-k) %>%
+#       select(-k) %>%
 #       data.frame
 #   }
 #   # Set model arguments
@@ -683,21 +694,21 @@ prepSWD <- function(swdIn, minFlockSize, maxFlockSize, samplingPeriodValue){
 #     .$variable
 #   # Remove environmental variables not used in this model:
 #   swdReduced <- swd %>%
-#     dplyr::select(pa, k) %>%
+#     select(pa, k) %>%
 #     bind_cols(
-#       swd %>% dplyr::select(one_of(variablesToInclude))
+#       swd %>% select(one_of(variablesToInclude))
 #     )
 #   # Make background, training, and test points:
 #   swdAbsence <- swdReduced %>%
-#     dplyr::filter(pa == 0)
+#     filter(pa == 0)
 #   swdTrain <- swdReduced %>%
-#     dplyr::filter(k != kFold & pa == 1) %>%
+#     filter(k != kFold & pa == 1) %>%
 #     bind_rows(swdAbsence) %>%
-#     dplyr::select(-k) %>%
+#     select(-k) %>%
 #     data.frame
 #   swdTest <- swdReduced %>%
-#     dplyr::filter(k == kFold & pa == 1) %>%
-#     dplyr::select(-k) %>%
+#     filter(k == kFold & pa == 1) %>%
+#     select(-k) %>%
 #     data.frame
 #   # Set model arguments
 #   modArguments <- c('nothreshold', 'nohinge', 'noquadratic',
@@ -711,7 +722,7 @@ prepSWD <- function(swdIn, minFlockSize, maxFlockSize, samplingPeriodValue){
 #   # Predict model values at test points:
 #   predictionPresence <- dismo::predict(maxentModel, swdTest)
 #   predictionAbsence <- dismo::predict(maxentModel,swdAbsence %>%
-#                                         dplyr::select(-c(pa, k)))
+#                                         select(-c(pa, k)))
 #   # Evaluate model:
 #   evaluationObject <- dismo::evaluate(p = predictionPresence,
 #                                       a = predictionAbsence)
