@@ -546,15 +546,6 @@ prevalencePlot <- ggplot(
                "Apr. 12 - 25","Apr. 26 - May 9")
   )
 
-grid.arrange(
-  arrangeGrob(
-    areaPlot + guides(color = FALSE) +
-      geom_text(aes(x = 4.5, y = .4), label = 'A)', size = 5, color = 1),
-    prevalencePlot  +
-      geom_text(aes(x = 4.5, y = .4), label = 'B)', size = 5, color = 1)
-    , ncol=2, widths = c(.95,1.1))
-)
-
 png(filename = paste0(outPlotsDir, 'areaPrevalenceSpring.png'),
     width = 11, height = 4.5, units = 'in', res = 300)
 grid.arrange(
