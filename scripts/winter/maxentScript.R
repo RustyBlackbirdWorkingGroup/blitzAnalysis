@@ -2,6 +2,9 @@
 # ---- SET-UP ----
 #===================================================================================================*
 
+# Smart installer will check list of packages that are installed, install any
+# necessary package that is missing, and load the library:
+
 smartInstallAndLoad <- function(packageVector){
   for(i in 1:length(packageVector)){
     package <- packageVector[i]
@@ -17,16 +20,23 @@ smartInstallAndLoad <- function(packageVector){
 smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
                       'lubridate','raster', 'dismo', 'ggplot2'))
 
+# Override some libraries for tidyverse functions:
+
+filter <- dplyr::filter
+select <- dplyr::select
+
 # IMPORTANT! Prior to running the below, run the file "makeSWD.R"
 # Also, in order to run this script, you need to place the maxent jar file in the folder: win-library/[version]/dismo/java
 
+# Set outPlots directory (example, do not run):
+
+outPlotsDir <- 'C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/'
+
 #----------------------------------------------------------------------------*
-# Basic functions:
+# ---- Basic functions ---
 #----------------------------------------------------------------------------*
 
 se <- function(x) {sd(x)/sqrt(length(x))}
-
-conf95 <- function(x) se(x)*1.96 
 
 #----------------------------------------------------------------------------*
 # Get swd (across observation types):
@@ -46,20 +56,20 @@ maxentRun <- function(swd, betaMultiplier,
                       kFold = 'noCrossValidate', excludeVariables = NULL){
   if(!is.null(excludeVariables)){
     swd <- swd %>%
-      dplyr::select(-one_of(excludeVariables))
+      select(-one_of(excludeVariables))
   }
   swdAbsence <- swd %>%
-    dplyr::filter(pa == 0) #%>%
+    filter(pa == 0) #%>%
   # Create input file of k fold:
   if(kFold != 'noCrossValidate'){
     swdTrain <- swd %>%
-      dplyr::filter(k != kFold & pa == 1) %>%
+      filter(k != kFold & pa == 1) %>%
       bind_rows(swdAbsence) %>%
       select(-k) %>%
       data.frame
   } else {
     swdTrain <- swd %>%
-      dplyr::filter(pa == 1) %>%
+      filter(pa == 1) %>%
       bind_rows(swdAbsence) %>%
       select(-k) %>%
       data.frame
@@ -87,7 +97,7 @@ maxentRunReduced <- function(swd, betaMultiplier,
   return(modelReduced)
 }
 
-# Get the contribution of environmental variables for a given model:
+# Function to get the contribution of environmental variables for a given model:
 
 getVariableContribution <- function(model){
   modelResults <- model@results %>% data.frame
@@ -95,13 +105,13 @@ getVariableContribution <- function(model){
   names(modelResults) <- c('contribution','variable')
   variableContribution <- modelResults %>%
     mutate(includesContribution = str_detect(variable, 'contribution')) %>%
-    dplyr::filter(includesContribution == TRUE) %>%
+    filter(includesContribution == TRUE) %>%
     select(-includesContribution) %>%
     mutate(variable = str_replace_all(variable, '.contribution', ''))
   return(variableContribution)  
 }
 
-# Get a vector of variables to remove from a given model:
+# Function to get a vector of variables to remove from a given model:
 
 variablesToRemove <- function(model){
   getVariableContribution(model) %>%
@@ -109,58 +119,21 @@ variablesToRemove <- function(model){
   .$variable
 }
 
-
-# Read the lambda file associated with a given model
+# Function to read the lambda file associated with a given model:
 
 readLambdaFile <- function(model){
   lambdaData <- model@lambdas
   tf <- tempfile()
   writeLines(lambdaData, tf)
   read.csv(tf, fill = TRUE, header = F) %>%
-    dplyr::select(variable = V1, lambda = V2)
+    select(variable = V1, lambda = V2)
 }
-# 
-# #----------------------------------------------------------------------------*
-# # Predict values at test locations:
-# #----------------------------------------------------------------------------*
-# 
-# modPredict <- function(swd, model, kFold){
-#   # swd <- prepSWD(minFlockSize,maxFlockSize, years, protocolChoice = 'all') %>%
-#   #   data.frame
-#   # swdTrain <- swd %>%
-#   #   dplyr::filter(k != kFold) %>%
-#   #   select(-k)
-#   swdAbsence <- swd %>%
-#     filter(pa == 0) %>%
-#     dplyr::sample_n(10000)
-#   swdTest <- swd %>%
-#     dplyr::filter(k == kFold & pa == 1) %>%
-#     bind_rows(swdAbsence) %>%
-#     select(-k) 
-#   # Run model for training points:
-#   # model <- maxentKrun(swd, kFold, betaMultiplier)
-#   # Get presence and absence test points
-#   swdTestPresence <- swdTest %>%
-#     filter(pa == 1) %>%
-#     dplyr::select(dev_hi:tmin2)
-#   swdTestAbsence <- swdTest %>% 
-#     filter(pa == 0) %>%
-#     dplyr::select(dev_hi:tmin2)
-#   presencePredictions <- predict(model, swdTestPresence,
-#                                 args=c('outputformat=raw'))
-#   absencePredictions <- predict(model, swdTestAbsence,
-#                                args=c('outputformat=raw'))
-#   probsum <- sum(presencePredictions, absencePredictions)
-#   list(
-#     length(swdTestPresence), # Number of presence points
-#     presencePredictions,     # Predictions at presence points
-#     probsum                  # Summed probability at pres and abs points
-#     )
-# }
 
 #----------------------------------------------------------------------------*
 # Calculate AIC:
 #----------------------------------------------------------------------------*
+
+# Function to calculate AICc, given a specific SWD and beta multiplier:
 
 calcAIC <- function(swd, betaMultiplier) {
   # Extract a  model:
@@ -205,6 +178,8 @@ betaFinder <- function(swd, betaValues){
   out
 }
 
+# Running betaFinder to determine the best model:
+
 betaValues <- seq(0, 10, .1)
 
 betaSmall <- betaFinder(swdSmall, betaValues)
@@ -221,11 +196,9 @@ betaLarge <- betaFinder(swdLarge, betaValues)
 
 # beta, large = 1.0, aic = 2599.788, nparm = 8
 
-
 #===================================================================================================*
 # ---- MODEL RUNNING AND CALIBRATION ----
 #===================================================================================================*
-
 
 #----------------------------------------------------------------------------*
 # Get AUC values associated with test points
@@ -251,14 +224,14 @@ runMaxentAUC <- function(swd, bestModel, betaMultiplier, kFold){
       )
   # Make background, training, and test points:
   swdAbsence <- swdReduced %>%
-    dplyr::filter(pa == 0)
+    filter(pa == 0)
   swdTrain <- swdReduced %>%
-    dplyr::filter(k != kFold & pa == 1) %>%
+    filter(k != kFold & pa == 1) %>%
     bind_rows(swdAbsence) %>%
     select(-k) %>%
     data.frame
   swdTest <- swdReduced %>%
-    dplyr::filter(k == kFold & pa == 1) %>%
+    filter(k == kFold & pa == 1) %>%
     select(-k) %>%
     data.frame
   # Set model arguments
@@ -273,7 +246,7 @@ runMaxentAUC <- function(swd, bestModel, betaMultiplier, kFold){
   # Predict model values at test points:
   predictionPresence <- dismo::predict(maxentModel, swdTest)
   predictionAbsence <- dismo::predict(maxentModel,swdAbsence %>%
-                                 dplyr::select(-c(pa, k)))
+                                 select(-c(pa, k)))
   # Evaluate model:
   evaluationObject <- dismo::evaluate(p = predictionPresence,
                                a = predictionAbsence)
@@ -318,7 +291,6 @@ summaryAUC <- bind_rows(summarySmall, summaryMedium, summaryLarge)
 
 # Plot AUC (not by observation type):
 
-library(ggplot2)
 ggplot(summaryAUC, aes(x = flockSize, y = meanAUC)) +
   geom_errorbar(aes(ymin=meanAUC - 1.96*seAUC,
                     ymax=meanAUC + 1.96*seAUC), width = 0) +#, position=pd)
@@ -411,10 +383,11 @@ aucPlot <- ggplot(
   theme(legend.key = element_blank()) + 
   facet_grid(flockSize ~ .)
 
-
 #----------------------------------------------------------------------------*
 # ---- Get ROC and plot ----
 #----------------------------------------------------------------------------*
+
+# Function to get a maxent evaluation frame:
 
 maxentEvaluation <- function(swd, bestModel, betaMultiplier, kFold){
   # Get environmental variables to include from the best model:
@@ -428,15 +401,15 @@ maxentEvaluation <- function(swd, bestModel, betaMultiplier, kFold){
     ) 
   # Make background, training, and test points:
   swdAbsence <- swdReduced %>%
-    dplyr::filter(pa == 0) %>% 
+    filter(pa == 0) %>% 
     data.frame
   swdTrain <- swdReduced %>%
-    dplyr::filter(k != kFold & pa == 1) %>%
+    filter(k != kFold & pa == 1) %>%
     bind_rows(swdAbsence) %>%
     select(-k) %>% 
     data.frame
   swdTest <- swdReduced %>%
-    dplyr::filter(k == kFold & pa == 1) %>%
+    filter(k == kFold & pa == 1) %>%
     # bind_rows(swdAbsence) %>%
     select(-k) %>% 
     data.frame
@@ -452,7 +425,7 @@ maxentEvaluation <- function(swd, bestModel, betaMultiplier, kFold){
   # Predict model values at test points:
   predictionPresence <- dismo::predict(maxentModel, swdTest)
   predictionAbsence <- dismo::predict(maxentModel,swdAbsence %>%
-                                        dplyr::select(-c(pa, k)))
+                                        select(-c(pa, k)))
   # Evaluate model:
   evaluationObject <- dismo::evaluate(p = predictionPresence,
                                       a = predictionAbsence)
@@ -500,10 +473,9 @@ rocPlot <- ggplot(rocFrame %>%
   xlab('1 - Specificity (Fractional predicted area)') +
   theme(axis.title = element_text(margin=margin(0,10,0,0)))
 
+# Plot and save output:
 
-# Plot output:
-
-png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/rocAUC.png",
+png(filename = paste0(outPlotsDir, 'rocAUC.png'),
     width = 7.5, height = 4, units = 'in', res = 300)
 grid.arrange(
   arrangeGrob(
@@ -530,10 +502,10 @@ grid.arrange(
 dev.off()
 
 #----------------------------------------------------------------------------*
-# ---- Make model predictions (raster maps) ----
+# ---- Make model predictions (for raster maps) ----
 #----------------------------------------------------------------------------*
 
-# Get environmental rasters for a given year:
+# Function to get environmental rasters for a given year:
 
 getRstack <- function(year){
   # Add tmin and ppt for a given year:
@@ -543,13 +515,15 @@ getRstack <- function(year){
   return(rStack)
 }
 
-# For a given best model and year make logistic prediction:
+# Function to get prediction of a given best model and year:
 
 getLogisticPrediction <- function(bestModel, rasterStack){
   predict(bestModel, rasterStack,
           args='outputformat=logistic', 
           progress='text')
 }
+
+# Get logistic predictions (2009 example):
 
 rStack2009 <- getRstack(2009)
 
@@ -562,6 +536,8 @@ large2009 <- getLogisticPrediction(bestModelLarge, rStack2009)
 #----------------------------------------------------------------------------*
 # ---- Area, prevalence, threshold ----
 #----------------------------------------------------------------------------*
+
+# Function to run model for area and prevalence, given a threshold:
 
 runMaxentAreaPrevalence <- function(swd, bestModel, betaMultiplier){
   # Get environmental variables to include from the best model:
@@ -589,6 +565,8 @@ runMaxentAreaPrevalence <- function(swd, bestModel, betaMultiplier){
   return(maxentModel)
 }
 
+# Function to get a fractional predicted area frame for a given model:
+
 getAreaPrevalenceFrame <- function(model, i){
   results <- model@results %>%
     data.frame
@@ -614,17 +592,17 @@ getAreaPrevalenceFrame <- function(model, i){
 # Note: Flock size 1 is the flocks size of interest, comparison to flock size 2
 
 randomSWDpair <- function(swd1, swd2){
-  nSamples <- nrow(dplyr::filter(swd1, pa == 1))
+  nSamples <- nrow(filter(swd1, pa == 1))
   # Get background points:
-  bgPoints <- dplyr::filter(swd1, pa == 0)
+  bgPoints <- filter(swd1, pa == 0)
   # Get random sample of presence points :
   bind_rows(
-    dplyr::filter(swd1, pa == 1),
-    dplyr::filter(swd2, pa == 1)
+    filter(swd1, pa == 1),
+    filter(swd2, pa == 1)
     ) %>%
-    dplyr::sample_n(nSamples,
+    sample_n(nSamples,
       replace = FALSE) %>%
-    dplyr:: bind_rows(bgPoints)
+     bind_rows(bgPoints)
 }
 
 # Make random prediction models. Because the result will be large, save as RDS rather than store in memory:
@@ -647,10 +625,11 @@ for(i in 1:10000){
   saveRDS(modMS, paste0(saveLoc, 'modMS', i, '.rds'))
 }
 
+# Provide an example RDS location (example, do not run):
+
+RDSlocation <- 'C:/Users/Brian/Dropbox/randomRUBLmodels'
+
 # Read in rds files, and fill matrices:
-
-# RDSlocation <- 'C:/Users/Brian/Dropbox/randomRUBLmodels'
-
 
 modCombos <- c('modLS', 'modLM','modMS')
 
@@ -663,7 +642,7 @@ for(i in 1:length(outList)){
     subOutList[[j]] <- readRDS(rdsFilepaths[j]) %>%
       getAreaPrevalenceFrame(j) %>%
       data.frame %>%
-      dplyr::mutate(permuted = modCombos[i])
+      mutate(permuted = modCombos[i])
   }
   outList[[i]] <- bind_rows(subOutList)
 }
@@ -676,7 +655,7 @@ cbPallete <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
 cbPallete <- c("#E69F00", "#009E73",
                "#0072B2", "#D55E00", "#CC79A7")
 
-# Predicted area plots
+# Plot predicted area by flock size (large):
 
 predictedAreaLFplot <- ggplot(permutationFrame %>%
          mutate(
@@ -701,16 +680,16 @@ predictedAreaLFplot <- ggplot(permutationFrame %>%
   xlim(.15, .4) +
   ylim(0, 38)
 
+# Plot predicted area by flock size (medium):
 
-predictedAreaMFplot <- ggplot(permutationFrame %>%
-                                mutate(
-                                  permuted = str_replace(permuted, 'modLM', 'Medium-Large'),
-                                  permuted = str_replace(permuted, 'modLS', 'Large-Small'),
-                                  permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
-                                  Permutation = permuted
-                                ) %>%
-                                filter(permuted != 'Large-Small'),
-                              aes(x=area)) + 
+predictedAreaMFplot <- permutationFrame %>%
+  mutate(
+    permuted = str_replace(permuted, 'modLM', 'Medium-Large'),
+    permuted = str_replace(permuted, 'modLS', 'Large-Small'),
+    permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
+    Permutation = permuted) %>%
+  filter(permuted != 'Large-Small') %>%
+  ggplot(aes(x=area)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
   scale_fill_manual(values = cbPallete[-c(1:2)]) +
   geom_segment(data = getAreaPrevalenceFrame(bestModelMedium,1),
@@ -719,23 +698,21 @@ predictedAreaMFplot <- ggplot(permutationFrame %>%
   theme_bw() +
   labs(x = 'Fractional predicted area',
        y = 'Density') +
-  theme(
-    axis.title = element_text(size = 15)
-  ) +
+  theme(axis.title = element_text(size = 15)) +
   xlim(.15, .4) +
   ylim(0, 38)
 
-# Predicted prevalence plots
+# Plot predicted prevalence (large flock):
 
-predictedPrevalenceLFplot <- ggplot(permutationFrame %>%
-                                mutate(
-                                  permuted = str_replace(permuted, 'modLM', 'Large-Medium'),
-                                  permuted = str_replace(permuted, 'modLS', 'Large-Small'),
-                                  permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
-                                  Permutation = permuted
-                                ) %>%
-                                filter(permuted != 'Medium-Small'),
-                              aes(x=prevalence)) + 
+predictedPrevalenceLFplot <- permutationFrame %>%
+  mutate(
+    permuted = str_replace(permuted, 'modLM', 'Large-Medium'),
+    permuted = str_replace(permuted, 'modLS', 'Large-Small'),
+    permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
+    Permutation = permuted
+  ) %>%
+  filter(permuted != 'Medium-Small') %>%
+  ggplot(aes(x=prevalence)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
   scale_fill_manual(values = cbPallete) +
   geom_segment(data = getAreaPrevalenceFrame(bestModelLarge,1),
@@ -750,16 +727,17 @@ predictedPrevalenceLFplot <- ggplot(permutationFrame %>%
   xlim(.15, .4) +
   ylim(0, 38)
 
+# Plot predicted prevalence (medium flock):
 
-predictedPrevalenceMFplot <- ggplot(permutationFrame %>%
-                                mutate(
-                                  permuted = str_replace(permuted, 'modLM', 'Medium-Large'),
-                                  permuted = str_replace(permuted, 'modLS', 'Large-Small'),
-                                  permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
-                                  Permutation = permuted
-                                ) %>%
-                                filter(permuted != 'Large-Small'),
-                              aes(x=prevalence)) + 
+predictedPrevalenceMFplot <- permutationFrame %>%
+  mutate(
+    permuted = str_replace(permuted, 'modLM', 'Medium-Large'),
+    permuted = str_replace(permuted, 'modLS', 'Large-Small'),
+    permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
+    Permutation = permuted
+  ) %>%
+  filter(permuted != 'Large-Small') %>%
+  ggplot(aes(x=prevalence)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
   scale_fill_manual(values = cbPallete[-c(1:2)]) +
   geom_segment(data = getAreaPrevalenceFrame(bestModelMedium,1),
@@ -774,10 +752,9 @@ predictedPrevalenceMFplot <- ggplot(permutationFrame %>%
   xlim(.15, .4) +
   ylim(0, 38)
 
+# Plot and save area prevalence plots:
 
-  
-# library(gridExtra)
-png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/areaPrevalence.png",
+png(filename = paste0(outPlotsDir, 'areaPrevalence.png'),
     width = 12, height = 4.5, units = 'in', res = 300)
 grid.arrange(
   arrangeGrob(
@@ -796,10 +773,13 @@ grid.arrange(
     )
 dev.off()
 
-
-###################################################################
+#----------------------------------------------------------------------------*
+# ---- Get error in predictions ----
+#----------------------------------------------------------------------------*
 
 # Next: k-fold for each model for getting error in predictions
+
+# Function to run maxent for a k-fold partition:
 
 runMaxentK <- function(swd, bestModel, betaMultiplier, kFold){
   # Get environmental variables to include from the best model:
@@ -813,13 +793,13 @@ runMaxentK <- function(swd, bestModel, betaMultiplier, kFold){
     )
   # Make background, training, and test points:
   swdAbsence <- swdReduced %>%
-    dplyr::filter(pa == 0)
+    filter(pa == 0)
   swdTrain <- swdReduced %>%
-    dplyr::filter(k != kFold & pa == 1) %>%
+    filter(k != kFold & pa == 1) %>%
     bind_rows(swdAbsence) %>%
     select(-k)
   swdTest <- swdReduced %>%
-    dplyr::filter(k == kFold & pa == 1) %>%
+    filter(k == kFold & pa == 1) %>%
     bind_rows(swdAbsence) %>%
     select(-k)
   # Set model arguments
@@ -834,6 +814,7 @@ runMaxentK <- function(swd, bestModel, betaMultiplier, kFold){
   return(maxentModel)
 }
 
+# Run for small medium and large flocks:
 
 outListSmall <- vector('list', length = 5)
 outListMedium <- vector('list', length = 5)
@@ -844,6 +825,8 @@ for(i in 1:5){
   outListMedium[[i]] <- runMaxentK(swdMedium, bestModelMedium, 1.4, i)
   outListLarge[[i]] <- runMaxentK(swdLarge, bestModelLarge, 1, i)
 }
+
+# Function to get summary stats for the above:
 
 getSummaryStatsK <- function(outList, flockSize){
   results <- outList@results %>% 
@@ -861,6 +844,8 @@ getSummaryStatsK <- function(outList, flockSize){
   return(resultsFrame)
 }
 
+# Run to get summary stats for the above:
+
 summaryListSmall <- vector('list', length = 5)
 summaryListMedium <- vector('list', length = 5)
 summaryListLarge <- vector('list', length = 5)
@@ -871,6 +856,8 @@ for(i in 1:5){
   summaryListLarge[[i]] <- getSummaryStatsK(outListLarge[[i]], 'large')
 }
 
+# Get flock summaries:
+
 summaryByFlock <- bind_rows(summaryListSmall, summaryListMedium, summaryListLarge) %>%
   group_by(flockSize, stat) %>%
   summarize(meanValue = mean(value),
@@ -878,16 +865,17 @@ summaryByFlock <- bind_rows(summaryListSmall, summaryListMedium, summaryListLarg
             minCi = meanValue - seValue * 1.96,
             maxCi = meanValue + seValue * 1.96)
 
+#----------------------------------------------------------------------------*
+# ---- Test output with random predictions  ----
+#----------------------------------------------------------------------------*
 
-
-
-# Generate a random sample of flock size 1 by flock size 2
+# Generate a random sample of flock size 1 by flock size 2:
 # Note: Flock size 1 is the flocks size of interest, comparison to flock size 2
 
 random.swd.pair <- function(swd1, swd2){
-  bgPoints <- dplyr::filter(swd1, pa == 0)
-  swd1pres <- dplyr::filter(swd1, pa == 1)
-  swd2pres <- dplyr::filter(swd2, pa == 1)
+  bgPoints <- filter(swd1, pa == 0)
+  swd1pres <- filter(swd1, pa == 1)
+  swd2pres <- filter(swd2, pa == 1)
   # Remove unevaluated flock
   # Determine the sample size as the proportion of flock size 1:
   probFS1 = nrow(swd1pres)/(nrow(swd1pres) + nrow(swd2pres))
@@ -897,11 +885,13 @@ random.swd.pair <- function(swd1, swd2){
   # a 1 related to the number of s1 observations:
   flockData %>%
     mutate(s.rand = rbinom(nrow(.),1,probFS1)) %>%
-    dplyr::filter(s.rand == 1) %>%
-    dplyr::mutate(pa = 1) %>%
-    dplyr::select(-s.rand) %>%
-    dplyr:: bind_rows(bgPoints)
+    filter(s.rand == 1) %>%
+    mutate(pa = 1) %>%
+    select(-s.rand) %>%
+     bind_rows(bgPoints)
 }
+
+# Function to run model with random pair:
 
 maxentRunRandomPair <- function(swd1, swd2, bestMod, betaMultiplier){
   swd <- random.swd.pair(swd1, swd2)
@@ -925,7 +915,9 @@ maxentRunRandomPair <- function(swd1, swd2, bestMod, betaMultiplier){
   maxentModel <- maxent(swdReduced[,-1], swdReduced[,1], args = modArguments)
 }
 
-getSampledAIC <- function(swd1, swd2, bestMod, betaMultiplier){
+# Function to get AUC of sampled values:
+
+getSampledAUC <- function(swd1, swd2, bestMod, betaMultiplier){
   model <- maxentRunRandomPair(swd1, swd2, bestMod, betaMultiplier)
   as.numeric(model@results[5,1])
 }
@@ -938,11 +930,10 @@ sampleAUClistLS <- vector('list', length = 100)
 sampleAUClistMS <- vector('list', length = 100)
 
 for(i in 1:100){
-  sampleAUClistLM[[i]] <- getSampledAIC(swdLarge, swdMedium, bestModelLarge, 2.7)
-  sampleAUClistLS[[i]] <- getSampledAIC(swdLarge, swdSmall, bestModelLarge, 2.7)
-  sampleAUClistMS[[i]] <- getSampledAIC(swdMedium, swdSmall, bestModelMedium, 1.4)
+  sampleAUClistLM[[i]] <- getSampledAUC(swdLarge, swdMedium, bestModelLarge, 2.7)
+  sampleAUClistLS[[i]] <- getSampledAUC(swdLarge, swdSmall, bestModelLarge, 2.7)
+  sampleAUClistMS[[i]] <- getSampledAUC(swdMedium, swdSmall, bestModelMedium, 1.4)
 }
-
 
 sampleAUClistSeb <- vector('list', length = 100)
 sampleAUClistSblitz <- vector('list', length = 100)
@@ -960,178 +951,21 @@ for(i in 1:100){
   sampleAUClistLblitz <- vector('list', length = 100)
 }
 
-
-
-hist(unlist(sampleAUClistLM))
-
-data.frame(I = unlist(sampleAUClistMS)) %>%
-  tbl_df %>%
-  ggplot(aes(I)) +
-  geom_density(fill = 'gray90') +
-  scale_x_continuous(limits = c(.75, 1)) +
-  ylab('Density')+
-  xlab ('Modified-Hellinger similarity (I)') +
-  theme_bw() +
-  theme(axis.title.y = element_text(size = rel(1.5), vjust = .9),
-        axis.title.x = element_text(size = rel(1.5), vjust = -0.4)) +
-  # geom_vline(xintercept = I.lf.sf$I.actual, linewidth = 2.5, linetype = 'longdash')
-  geom_segment(data = data.frame(I = bestModelMedium@results[5,1]),
-               aes(x = I, y = 0, xend = I, yend = Inf))#,
-# linewidth = 2.5, linetype = 'longdash')
-
-
-
-
-
-
-
-
-#############################################################################################
-  
-
-
-
-# 
-
-
-
-# Run maxent model with training and background data:
-maxentModel <- maxent(swdTrain[,-1], swdTrain[,1], args = modArguments)
-
-
-# evaluationObject <- dismo::evaluate(p = swdTest %>%
-#                                filter(pa > 0) %>%
-#                                .$predictions,
-#                              a = swdTest %>%
-#                                filter(pa == 0) %>%
-#                                .$predictions)
-
-modelOutList <- function(minFlockSize, maxFlockSize, years, 
-                         betaMultiplier, protocolChoice = 'all'){
-  swd <- prepSWD(minFlockSize,maxFlockSize, years, protocolChoice)
-  outList <- vector('list', 5)
-  for (i in 1:5){
-    outList[[i]] <- maxentRun(swd, betaMultiplier, i)
-  }
-  outList
-}
-
-
-
-
-maxentRun <- function(swd, betaMultiplier,
-                      kFold = 'noCrossValidate', excludeVariables = NULL)
-
-
-
-# Get auc value to evaluate models of each flock size class:
-
-evaluationListS <- vector('list', length =5)
-evaluationListM <- vector('list', length =5)
-evaluationListL <- vector('list', length =5)
-
-
-for(i in 1:5){
-  evaluationListS[[i]] <- maxentCrossValidation(1, 20, 2009:2011, 
-                                                i, betaMultiplier, protocolChoice = 'all')@auc
-  evaluationListM[[i]] <- maxentCrossValidation(21, 99, 2009:2011, 
-                                                i, betaMultiplier, protocolChoice = 'all')@auc
-  evaluationListL[[i]] <- maxentCrossValidation(100, Inf, 2009:2011, 
-                                    i, betaMultiplier, protocolChoice = 'all')@auc
-}
-
-aucFrame <- data.frame(
-  flockSize = c('S', 'M', 'L'),
-  meanAUC = c(
-    mean(unlist(evaluationListS)),
-    mean(unlist(evaluationListM)),
-    mean(unlist(evaluationListL))),
-  confidence = c(
-    sd(unlist(evaluationListS))/sqrt(5)*1.96,
-    sd(unlist(evaluationListM))/sqrt(5)*1.96,
-    sd(unlist(evaluationListL))/sqrt(5)*1.96)
-  )
-
-
-# Run model across k
-
-
-maxentRun <- function(minFlockSize, maxFlockSize, years, betaMultiplier, protocolChoice = 'all'){
-  # Create input file of k fold::
-  swd <- prepSWD(minFlockSize,maxFlockSize, years, protocolChoice) %>%
-    data.frame %>%
-    select(-k)
-  # Set model arguments
-  betaR <- str_c('betamultiplier=', betaMultiplier)
-  modArguments <- c('nothreshold', 'nohinge', #'noproduct','noquadratic',
-                    betaR, 'addallsamplestobackground',
-                    'writebackgroundpredictions',#'replicates=5','writeplotdata',
-                    'noautofeature','nooutputgrids',
-                    'maximumiterations=10000', 'verbose')
-  # Run maxent model with training and background data:
-  maxentModel <- maxent(swd[,-1], swd[,1], args = modArguments)
-  return(maxentModel)
-}
-
-smallFlockModel <- maxentRun(1, 19, 2009:2011, 1)
-
-mediumFlockModel <- maxentRun(20, 99, 2009:2011, 0)
-
-largeFlockModel <- maxentRun(99, Inf, 2009:2011, 0)
-
-# 
-
-minFlockSize = 90
-maxFlockSize = Inf
-years = 2009:2011
-kFold = 3
-betaR = 2
-protocolChoice = 'all'
-
-test14 <- maxentCrossValidation(minFlockSize, maxFlockSize, years, kFold, betaR, protocolChoice)
+# Function to get an evaluation object:
 
 modelEvaluate <- function(minFlockSize, maxFlockSize, years, protocolChoice = 'all'){
   presenceLC <- prepSWD(minFlockSize,maxFlockSize, years, protocolChoice = 'all') %>%
     filter(pa == 1) %>%
-    dplyr::select(dev_hi:tmin) %>%
+    select(dev_hi:tmin) %>%
     as.matrix
   absenceLC <- prepSWD(minFlockSize,maxFlockSize, years, protocolChoice = 'all') %>%
     filter(pa == 0) %>%
-    dplyr::select(dev_hi:tmin) %>%
+    select(dev_hi:tmin) %>%
     as.matrix
   evaluate(presenceLC, absenceLC, test14[[2]])
 }
 
-slotNames(test14[[2]]$models)
-
-
-
-modelEvaluate(minFlockSize, maxFlockSize, years, protocolChoice = 'all')
-
-testEvaluate <- evaluate(
-  p = ,
-  a = prepSWD(minFlockSize,maxFlockSize, years, protocolChoice = 'all') %>%
-    filter(pa == 0) %>%
-    dplyr::select(dev_hi:tmin) %>%
-    as.matrix,
-  model = test14[[2]]
-)
-
-testPredict <- predict(test14$maxentModel, 
-        prepSWD(minFlockSize,maxFlockSize, years, protocolChoice = 'all') %>%
-          dplyr::filter(k == kFold) %>%
-          data.frame %>%
-          dplyr::select(dev_hi:tmin)
-)
-          
-
-test15<- maxentRun(swd$y2015, flockSizeClass, kFold, beta.multiplier)
-test15
-
-test16 <- maxentRun(swd$y2016, flockSizeClass, kFold, beta.multiplier)
-test16
-# 
-# mTest <- maxentEvaluate(observationClass, flockSizeClass, kFold, beta.multiplier)
+# Function to run model and get evaluation object:
 
 maxentEvaluate <- function(observationClass, flockSizeClass, kFold, beta.multiplier){
   # Run model
@@ -1139,14 +973,14 @@ maxentEvaluate <- function(observationClass, flockSizeClass, kFold, beta.multipl
   maxentModel <- maxentModelOut$maxentModel
   # Create test point files for evaluation
   swdTest <-   swd[[observationClass]][[flockSizeClass]] %>%
-    dplyr::filter(k == kFold)
+    filter(k == kFold)
   testPresence <- swdTest %>%
-    dplyr::filter(sp == 1) %>%
-    dplyr::select(-c(sp,lon, lat,k)) # select(lon, lat)%>% 
+    filter(sp == 1) %>%
+    select(-c(sp,lon, lat,k)) # select(lon, lat)%>% 
   #SpatialPoints(proj4string = CRS(projection(rStack2009)))
   testAbsence <- swdTest %>%
-    dplyr::filter(sp == 0) %>%
-    dplyr::select(-c(sp,lon, lat,k)) # select(lon, lat)%>%%>%
+    filter(sp == 0) %>%
+    select(-c(sp,lon, lat,k)) # select(lon, lat)%>%%>%
   #SpatialPoints(proj4string = CRS(projection(rStack2009)))
   modelEvaluation <- evaluate(testPresence, testAbsence, maxentModel)
   return(list(maxentModel = maxentModel, modelEvaluation = modelEvaluation,
@@ -1190,40 +1024,38 @@ allIndOut <- maxentAcrossFolds(observationClass, 'ind', beta.multiplier)
 allSfOut <- maxentAcrossFolds(observationClass, 'sf', beta.multiplier)
 allLfOut <- maxentAcrossFolds(observationClass, 'lf', beta.multiplier)
 
-# Functions to extract variable contribution and lambda data:
+# Functions to extract variable contribution for a given model:
 
-se <- function(x) sd(x)/sqrt(length(x))
-
-readLambdaFile <- function(model, i){
+readLambdaFileIteration <- function(model, i){
   lambdaData <- model[[1]][[i]][[1]]@lambdas[1:15]
   tf <- tempfile()
   writeLines(lambdaData, tf)
   read.csv(tf, fill = TRUE, header = F) %>%
-    dplyr::select(variable = V1, lambda = V2)
+    select(variable = V1, lambda = V2)
 }
+
+# Function to make lambda contribution frame:
 
 makeLambdaContributionFrame <- function(model){
   dfContributionMat <- matrix(nrow = 15, ncol = 5)
   lambdaMat <- matrix(nrow = 15, ncol = 5)
-  
   for(i in 1:ncol(lambdaMat)){
-    lambdaMat[,i] <- readLambdaFile(model, i)[,2]
+    lambdaMat[,i] <- readLambdaFileIteration(model, i)[,2]
     dfContributionMat[,i] <- model[[1]][[i]][[1]]@results[7:21]
   }
-  
+  # Lambda summary data:
   lambdaSummary <- data.frame(
     variable = as.character(readLambdaFile(model,1)$variable), 
     meanLambda = apply(lambdaMat, 1, mean),
     seLambda = apply(lambdaMat, 1, se))
-  
+  # Summary contribution frame
   variableContributionSummary <- data.frame(
     variable = as.character(readLambdaFile(model,1)$variable), 
     meanContribution = apply(dfContributionMat, 1, mean),
     seContribution = apply(dfContributionMat, 1, se))
-  
+  # Output:
   outFrame <- plyr::join(variableContributionSummary, lambdaSummary) %>%
     arrange(desc(meanContribution))
-  
   return(outFrame)
 }
 
@@ -1232,36 +1064,9 @@ lambdaContributionFrame_allIndOut <- makeLambdaContributionFrame(allIndOut)
 lambdaContributionFrame_allSfOut <- makeLambdaContributionFrame(allSfOut)
 
 lambdaContributionFrame_allLfOut <- makeLambdaContributionFrame(allLfOut)
-# 
-# 
-# df2 <- data.frame(variable = df1[,1], 
-#                   percentContribution = apply(df1[,-1], 1, mean),
-#                   standardError = apply(df1[,-1], 1, se)) %>%
-#                   arrange(desc(percentContribution))
-# 
-
-
-prob.r.stack = function(model, outformat){
-  r = stack()
-  for (i in 1:5){
-    r1 = predict(model[[1]][[i]][[1]],rStack2009,
-                 args=c(paste('outputformat=',outformat, sep = '')), 
-                 progress='text')
-    r = stack(r, r1)
-  }
-  r
-}
-
-allIndOutRlogistic <- prob.r.stack(allIndOut, 'logistic')
-allSfOutRlogistic <- prob.r.stack(allSfOut, 'logistic')
-allLfOutRlogistic <- prob.r.stack(allLfOut, 'logistic')
-
-indLogisticMean <- mean(allIndOutRlogistic)
-sfLogisticMean <- mean(allSfOutRlogistic)
-lfLogisticMean <- mean(allLfOutRlogistic)
 
 #-------------------------------------------------------------------------------*
-# Niche equivalency:
+# ---- Niche equivalency analysis ----
 #-------------------------------------------------------------------------------*
 
 flockData <- swdRUBL[[1]] 
@@ -1269,29 +1074,29 @@ flockData <- swdRUBL[[1]]
 # Generate a random sample of species 1 by species 2
 # Note: Species 1 is the species of interest, comparison to species 2
 
-random.swd.pair = function(sp1, sp2){
+random.swd.pair <- function(sp1, sp2){
   # Remove unevaluated flock
   flockData <- flockData %>%
-    dplyr::filter(sp == sp1|sp == sp2)
-  nSp1 <- nrow(dplyr::filter(flockData, sp == sp1))
+    filter(sp == sp1|sp == sp2)
+  nSp1 <- nrow(filter(flockData, sp == sp1))
   # Determine the sample size as the proportion of species 1:
   prob.s1 = nSp1/nrow(flockData)
   # Generate random value of 1 or 0 with the probability of obtaining
   # a 1 related to the # of s1 observations:
   flockData %>%
     mutate(s.rand = rbinom(nrow(.),1,prob.s1)) %>%
-    dplyr::filter(s.rand == 1) %>%
-    dplyr::mutate(sp = 1) %>%
-    dplyr::select(-s.rand)
+    filter(s.rand == 1) %>%
+    mutate(sp = 1) %>%
+    select(-s.rand)
 }
 
 # Function to run maxent for a given dataset:
 
-maxentRunRawPlot = function(inFlockData, beta.multiplier = 0){
+maxentRunRawPlot <- function(inFlockData, beta.multiplier = 0){
   # Model input:
   swdFlock <- inFlockData
   max.in <- rbind(swdFlock, swdBG) %>%
-    dplyr::select(-c(lat, lon))
+    select(-c(lat, lon))
   # Set model arguments
   beta.r <- str_c('betamultiplier=', beta.multiplier)
   mod.args <- c('nothreshold', 'nohinge', 'noproduct',#'noquadratic',
@@ -1306,58 +1111,34 @@ maxentRunRawPlot = function(inFlockData, beta.multiplier = 0){
 
 # Run models of empirical data:
 
-lf <- maxentRunRawPlot(dplyr::filter(flockData, sp == 'lf') %>%
+lf <- maxentRunRawPlot(filter(flockData, sp == 'lf') %>%
                          mutate(sp = 1))
-sf <- maxentRunRawPlot(dplyr::filter(flockData, sp == 'sf') %>%
+sf <- maxentRunRawPlot(filter(flockData, sp == 'sf') %>%
                          mutate(sp = 1))
-ind <- maxentRunRawPlot(dplyr::filter(flockData, sp == 'ind') %>%
+ind <- maxentRunRawPlot(filter(flockData, sp == 'ind') %>%
                           mutate(sp = 1))
 
-# Run null models for flock size pairs
-# Note: Each of the null surface lists are 382.5 Mb!
-# 
-# n.lf.sf <- list(length = 1000)
-# n.sf.lf <- list(length = 1000)
-# n.lf.ind <- list(length = 1000)
-# n.ind.lf <- list(length = 1000)
-# n.sf.ind <- list(length = 1000)
-# n.ind.sf <- list(length = 1000)
-# 
-# for(i in 1:1000) n.sf.ind[[i]] <- maxentRunRawPlot(random.swd.pair('sf', 'ind'))
-# for(i in 1:1000) n.ind.sf[[i]] <- maxentRunRawPlot(random.swd.pair('ind', 'sf'))
-# for(i in 1:1000) n.lf.ind[[i]] <- maxentRunRawPlot(random.swd.pair('lf', 'ind'))
-# for(i in 1:1000) n.ind.lf[[i]] <- maxentRunRawPlot(random.swd.pair('ind', 'lf'))
-# for(i in 1:1000) n.lf.sf[[i]] <- maxentRunRawPlot(random.swd.pair('lf', 'sf'))
-# for(i in 1:1000) n.sf.lf[[i]] <- maxentRunRawPlot(random.swd.pair('sf', 'lf'))
 
+# Function to calculate modified Hellinger similarities for a given model run:
 
-#-------------------------------------------------------------------------------
-# Function to calculate modified Hellinger similarities for a given model run
-#-------------------------------------------------------------------------------
-
-I.dist = function(p.x, p.y){
+I.dist <- function(p.x, p.y){
   # Convert the rasters to SpatialGridDataFrame format:
-  p.x = as(p.x, 'SpatialGridDataFrame')
-  p.y = as(p.y, 'SpatialGridDataFrame')
-  # Make a list of the probability surfaces:
-  # p.list = list(p.x,p.y)
+  p.x <- as(p.x, 'SpatialGridDataFrame')
+  p.y <- as(p.y, 'SpatialGridDataFrame')
   # Calculate the modified-Hellinger similarity (Warren 2008, pg. 2870)
-  # niche.overlap(p.list)[2,1]
   niche.overlap(list(p.y, p.x))
 }
 
-#-------------------------------------------------------------------------------
-# Function to run niche equivalency analyses on two flock size classes
-#-------------------------------------------------------------------------------
-# This function generates a list of two elements, slot1 contains the modified-H
-# distance (I) of the actual data and slot2 contains the modified-H of the
-# null distribution.
+# Function to run niche equivalency analyses on two flock size classes. 
+# Note: This function generates a list of two elements, slot1 contains the 
+# modified-H  distance (I) of the actual data and slot2 contains the modified-H
+# of the null distribution.
 
-run.nea <- function(sp1, sp2, iterations){ #, null.xy, null.yx){
+run.nea <- function(sp1, sp2, iterations){
   I.actual <- I.dist(
-    maxentRunRawPlot(dplyr::filter(flockData, sp == sp1) %>%
+    maxentRunRawPlot(filter(flockData, sp == sp1) %>%
                        mutate(sp = 1)),
-    maxentRunRawPlot(dplyr::filter(flockData, sp == sp2) %>%
+    maxentRunRawPlot(filter(flockData, sp == sp2) %>%
                        mutate(sp = 1))
   )[2]
   I.null <- rep(NA, iterations)
@@ -1372,9 +1153,7 @@ run.nea <- function(sp1, sp2, iterations){ #, null.xy, null.yx){
   return(nea.list)
 }
 
-#-------------------------------------------------------------------------------
-# Run niche equivalency analyses
-#-------------------------------------------------------------------------------
+# Run niche equivalency analyses:
 
 # Large flock vs. small flock:
 
@@ -1388,9 +1167,8 @@ I.lf.ind <- run.nea('lf','ind',1000)
 
 I.sf.ind <- run.nea('sf','ind',1000)
 
-#-------------------------------------------------------------------------------
-# Stats for niche equivalency analyses
-#-------------------------------------------------------------------------------
+
+# Stats for niche equivalency analyses.
 # Statistic pairwise comparisons of null and actual modified-Hellinger 
 # similarities for large vs. small flocks, large vs. individual sightings and 
 # small flocks vs.individual sightings. 
@@ -1421,44 +1199,15 @@ outStats_I.lf.ind <- out.stats(I.lf.ind)
 
 outStats_I.sf.ind <- out.stats(I.sf.ind)
 
-#-------------------------------------------------------------------------------
-# Plot the histograms
-#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------*
+# ---- Plot the niche equivalency histograms ----
+#-------------------------------------------------------------------------------*
 # Histograms compare the density distribution of the modified-Hellinger 
 # similarities of the null models against the distance of the actual model for
 # large vs. small flocks, large vs. individual sightings and small flocks vs. 
 # individual sightings.
 
-# Histogram function:
-
-hist.mhd = function(I.sp1.sp2,main.label,out.name, leg){
-  null.dist = out.stats(I.sp1.sp2)[[2]]
-  emp.dist = out.stats(I.sp1.sp2)[[1]]
-  plot.new()
-  # setwd('C:/Users/Brian/Dropbox/rubl_12_15/scratch_out')
-  # jpeg(out.name, 1200,1250, res = 300)
-  hist(null.dist, breaks = seq(0,1, by = .005), freq = F,
-       xlim = c(0.85,1), ylim = c(0,110),
-       col = 'gray80', cex.lab = .9,
-       main = '', ylab = '',xlab='',
-       axes =F)
-  axis(1, line = -0.4)
-  axis(2, line = 0)
-  title(line = 2.5, xlab = 'Modified-Hellinger similarity (I)', ylab = 'Density')
-  title(main = main.label, line = .5, cex.main = 1)
-  lines(c(emp.dist, emp.dist), c(0,100), lwd = 2, lty = 2)
-  if (leg == T)
-    legend(.855,90,'Null','gray80',1, bty = 'n',
-           x.intersp = .95, cex = .9)
-  if (leg == T)
-    legend(.85,100,'Actual',lty = 2,lwd = 2, bty = 'n', 
-           x.intersp = .4, cex = .9)
-  # dev.off()
-}
-
-# Make plots:
-
-library(ggplot2)
+# Plot Niche equivalency analyses:
 
 data.frame(I = I.lf.sf$I.null) %>%
   tbl_df %>%
@@ -1470,10 +1219,8 @@ data.frame(I = I.lf.sf$I.null) %>%
   theme_bw() +
   theme(axis.title.y = element_text(size = rel(1.5), vjust = .9),
         axis.title.x = element_text(size = rel(1.5), vjust = -0.4)) +
-  # geom_vline(xintercept = I.lf.sf$I.actual, linewidth = 2.5, linetype = 'longdash')
   geom_segment(data = data.frame(I = I.lf.sf$I.actual),
-               aes(x = I, y = 0, xend = I, yend = Inf))#,
-# linewidth = 2.5, linetype = 'longdash')
+               aes(x = I, y = 0, xend = I, yend = Inf))
 
 data.frame(I = I.lf.ind$I.null) %>%
   tbl_df %>%
@@ -1483,10 +1230,8 @@ data.frame(I = I.lf.ind$I.null) %>%
   ylab('Density')+
   xlab ('Modified-Hellinger similarity (I)') +
   theme_bw() +
-  # geom_vline(xintercept = I.lf.sf$I.actual, linewidth = 2.5, linetype = 'longdash')
   geom_segment(data = data.frame(I = I.lf.ind$I.actual),
-               aes(x = I, y = 0, xend = I, yend = Inf))#,
-#linewidth = 2.5, linetype = 'longdash')
+               aes(x = I, y = 0, xend = I, yend = Inf))
 
 
 data.frame(I = I.sf.ind$I.null) %>%
@@ -1497,291 +1242,7 @@ data.frame(I = I.sf.ind$I.null) %>%
   ylab('Density')+
   xlab ('Modified-Hellinger similarity (I)') +
   theme_bw() +
-  # geom_vline(xintercept = I.lf.sf$I.actual, linewidth = 2.5, linetype = 'longdash')
   geom_segment(data = data.frame(I = I.sf.ind$I.actual),
-               aes(x = I, y = 0, xend = I, yend = Inf))#,
-#linewidth = 2.5, linetype = 'longdash')
+               aes(x = I, y = 0, xend = I, yend = Inf))
 
-hist.mhd(I.lf.sf, 'Large vs.medium flock sightings', 'mh_dist_lf_sf.jpg',T)
-
-hist.mhd(I.lf.ind, 'Large flock vs. small flock sightings', 'mh_dist_lf_ind.jpg',F)
-
-hist.mhd(I.sf.ind, 'Medium flock vs. small flock sightings', 'mh_dist_sf_ind.jpg',F)
-
-#-------------------------------------------------------------------------------
-# Predicted niche occupancy
-#===============================================================================
-
-#-------------------------------------------------------------------------------
-# PNO functions:
-#-------------------------------------------------------------------------------
-
-# Calculate pno:
-
-pno.df <- function(mod.x, mod.y, env.var){
-  # Sum the raw probabilities about a given value of an environmental variable:
-  pno.df <- data.frame(zonal(mod.x,rStack2009[[env.var]],'sum', digits = 2))
-  pno.df[,3] <- zonal(mod.y,rStack2009[[env.var]],'sum', digits = 2)[,2]
-  colnames(pno.df) <- c('env','pno.sp1','pno.sp2')
-  pno.df
-}
-
-
-# Determine the modified-Hellinger similarity between two pnos:
-
-pno.I <- function(mod.x, mod.y, env.var){
-  df <- pno.df(mod.x, mod.y, env.var)
-  # Calculate the modified-Hellinger similarity (I):
-  niche.overlap(df)[2,1]
-}
-
-
-run.pno <- function(sp1, sp2, env.var, iterations){
-  mod.x <- maxentRunRawPlot(dplyr::filter(flockData, sp == sp1) %>%
-                              mutate(sp = 1))
-  mod.y <- maxentRunRawPlot(dplyr::filter(flockData, sp == sp2) %>%
-                              mutate(sp = 1))
-  pno.actual <- pno.df(mod.x, mod.y, env.var)
-  pno.I.actual <- pno.I(mod.x, mod.y, env.var)
-  pno.I.null <- numeric()
-  for (i in 1:iterations){
-    null.xy <- maxentRunRawPlot(random.swd.pair(sp1, sp2))
-    null.yx <- maxentRunRawPlot(random.swd.pair(sp2, sp1))
-    pno.I.null[i] = pno.I(null.xy,null.yx, env.var)
-  }
-  pno.list <- list(pno.I.actual, pno.I.null, pno.actual) # pno.actual, 
-  names(pno.list) = c('pno.I.actual','pno.I.null','pno.actual')
-  return(pno.list)
-}
-
-# Run pno models, returns a list of the
-# actual pno-I (one value) and a vector of 100 null pno-I's:
-
-# run.pno = function(mod.x, mod.y, null.xy, null.yx, env.var){
-#   pno.actual = pno.df(mod.x, mod.y, env.var)
-#   pno.I.actual = pno.I(mod.x, mod.y, env.var)
-#   pno.I.null = numeric()
-#   for (i in 1:100){
-#     pno.I.null[i] = pno.I(null.xy[[i]],null.yx[[i]], env.var)
-#   }
-#   pno.list = list(pno.I.actual, pno.I.null, pno.actual) # pno.actual, 
-#   names(pno.list) = c('pno.I.actual','pno.I.null','pno.actual')
-#   return(pno.list)
-# }
-
-#-------------------------------------------------------------------------------
-# Run PNO
-#-------------------------------------------------------------------------------
-# THIS TAKES A VERY LONG TIME TO RUN!
-
-pno.lf.sf <- vector('list', length = 15)
-for(j in 1:15){
-  pno.lf.sf[[j]] <- run.pno('lf', 'sf', j, 100)
-}
-
-pno.lf.ind <- vector('list', length = 15)
-for(j in 1:15){
-  pno.lf.ind[[j]] <- run.pno('lf', 'ind', j, 100)
-}
-
-pno.sf.ind <- vector('list', length = 15)
-for(j in 1:15){
-  pno.sf.ind[[j]] <- run.pno('sf', 'ind', j, 100)
-}
-
-
-# 
-# pno.lf.sf = list()
-# for(i in 1:15){
-#   pno.lf.sf[[i]] = run.pno(lf, sf, n.lf.sf, n.sf.lf,i)
-# }
-# 
-# pno.lf.ind = list()
-# for(i in 1:15){
-#   pno.lf.ind[[i]] = run.pno(lf, ind, n.lf.ind, n.ind.lf,i)
-# }
-# 
-# pno.sf.ind = list()
-# for(i in 1:15){
-#   pno.sf.ind[[i]] = run.pno(sf, ind, n.sf.ind, n.ind.sf,i)
-# }
-
-names(pno.lf.sf) = names(rStack2009)
-names(pno.lf.ind) = names(rStack2009)
-names(pno.sf.ind) = names(rStack2009)
-
-
-saveRDS(pno.lf.sf, 'pno.lf.sf.rds')
-saveRDS(pno.lf.ind, 'pno.lf.ind.rds')
-saveRDS(pno.sf.ind, 'pno.sf.ind.rds')
-
-#-------------------------------------------------------------------------------
-# Stat output of pno
-#-------------------------------------------------------------------------------
-
-pno.stats = function(pno.sp1.sp2.env){
-  I.actual = pno.sp1.sp2.env$pno.I.actual
-  I.null = pno.sp1.sp2.env$pno.I.null
-  I.null.mean = mean(I.null)
-  I.null.se = se(I.null)
-  I.null.05 = quantile(I.null, probs = 0.05)
-  I.null.10 = quantile(I.null, probs = 0.1)
-  p = ecdf(I.null)(I.actual)
-  l = list(I.actual, I.null,I.null.mean, I.null.se, I.null.05, 
-           I.null.10, p)
-  names(l) = c('I.actual','I.null', 'I.null.mean', 'I.null.se',
-               'I.null.05','I.null.10','p') ; l
-}
-
-out.pno.stats = function(pno.sp1.sp2){
-  pno.out = list()
-  for (i in 1:15){
-    pno.out[[i]] = pno.stats(pno.sp1.sp2[[i]])
-  }
-  names(pno.out) = names(rStack2009)
-  pno.out
-}
-
-out.pno.lf.sf = out.pno.stats(pno.lf.sf)
-out.pno.lf.ind = out.pno.stats(pno.lf.ind)
-out.pno.sf.ind = out.pno.stats(pno.sf.ind)
-
-#-------------------------------------------------------------------------------
-# Plotting PNO
-#-------------------------------------------------------------------------------
-
-pno.lf.ind[['dev_hi']][[1]][,3]
-
-names(rStack2009)[env]
-
-plot.pno = function(env) {
-  df = pno.lf.sf[[env]][[1]]
-  ind = pno.lf.ind[[env]][[1]][,3]
-  env = df[,1]
-  lf = df[,2]
-  sf = df[,3]
-  plot(lf~env, type = 'l', xlim = c(0,1), lwd =2, bty ='l',
-       main = names(rStack2009[[env]]), ylab = 'PNO')
-  lines(env, sf, lty = 2, lwd = 2)
-  lines(env, ind, lty = 3, lwd = 2)
-}
-
-plot.pno(3)
-
-
-plot.pno = function(env) {
-  df = pno.lf.sf[[env]][[3]]
-  ind = pno.lf.ind[[env]][[3]][,3]
-  lc = df[,1]
-  lf = df[,2]
-  sf = df[,3]
-  plot(lf~lc, type = 'l', xlim = c(0,1), lwd =2, bty ='l',
-       main = names(rStack2009)[env], ylab = 'PNO')
-  lines(lc, sf, lty = 2, lwd = 2)
-  lines(lc, ind, lty = 3, lwd = 2)
-}
-
-plot.pno(3)
-
-#########################################################################################################
-#########################################################################################################
-#########################################################################################################
-# Compare distributions
-library(ggplot2)
-
-ptsENV <- swdBG %>%
-  dplyr::mutate(sp = 'bg', observationType = 'ebird') %>%
-  dplyr::select(sp, observationType, lon:woodland) %>%
-  dplyr::bind_rows(swdRUBL$eb %>%
-                     dplyr::mutate(observationType = 'ebird') %>%
-                     dplyr::select(sp, observationType, lon:woodland)) %>%
-  dplyr::bind_rows(swdRUBL$bz %>%
-                     dplyr::mutate(observationType = 'blitz') %>%
-                     dplyr::select(sp, observationType, lon:woodland)) %>%
-  dplyr::mutate(sp = factor(sp))
-
-ptsENV$sp <- factor(sp, levels =  'bg','ind','sf', 'lf')
-
-
-modeFun <- function(variable, rounding){
-  d <- density(round_any(variable, rounding))
-  dFrame <- data.frame(d$x, d$y)
-  names(dFrame) <- c('x','y')
-  dFrame %>% dplyr::filter(y == max(y)) %>%
-    dplyr::select(x)
-}
-
-summarizeByFlockSize <- function(variable, rounding){
-  outTable <- ptsENV %>%
-    dplyr::select(sp, observationType, 
-                  variable = matches(variable)) %>%
-    dplyr::group_by(sp) %>%
-    dplyr::summarize(min = min(variable),
-                     max = max(variable),
-                     mean = mean(variable),
-                     variance = var(variable),
-                     IQR = IQR(variable))
-  if(variable == 'ppt' | variable == 'tmin'){
-    outTable <- ptsENV %>%
-      dplyr::select(sp, observationType, 
-                    variable = matches(variable)) %>%
-      dplyr::group_by(sp) %>%
-      dplyr::summarize(min = min(variable),
-                       max = max(variable),
-                       mean = mean(variable),
-                       variance = var(variable),
-                       IQR = IQR(variable),
-                       mode = as.numeric(modeFun(variable, 0.5)))
-  }
-  return(outTable)
-}
-
-
-ksTest <- function(variable, sp1, sp2){
-  v1 <- ptsENV %>% 
-    dplyr::filter(sp == sp1) %>%
-    collect %>%
-    .[[variable]]
-  v2 <- ptsENV %>% 
-    dplyr::filter(sp == sp2) %>%
-    collect %>%
-    .[[variable]]
-  ks.test(v1, v2)
-}
-
-summarizeByFlockSize('tmin', 0.5)
-
-
-ksTest('tmin','sf','lf')
-
-ksTest('dev_hi','sf','ind')
-
-
-ksTest('dev_li','sf','lf')
-
-ksTest('flood','ind','bg')
-
-ksTest('flood','lf','ind')
-
-ksTest('flood','lf','sf')
-
-
-
-ggplot(ptsENV, 
-       aes(x = flood, fill = sp)) +
-  geom_histogram(aes(y=0.5*..density..),
-                 position = 'identity', binwidth=0.1) +
-  facet_wrap(~sp,nrow=3) +
-  theme(aspect.ratio = 1) +
-  theme_bw()
-
-ggplot(ptsENV, 
-       aes(factor(sp,levels = c('bg','ind','sf','lf')),
-           dev_hi, fill = sp)) +
-  geom_violin(adjust = 0.5) +
-  xlab('Point data class') +
-  ylab('Environmental variable') +
-  coord_flip() +
-  theme_bw()
-
-
+#### END ####
