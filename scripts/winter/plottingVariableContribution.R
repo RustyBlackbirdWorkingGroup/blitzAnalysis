@@ -1,13 +1,36 @@
-#-----------------------------------------------------------------------------------*
+#===================================================================================*
 # ---- SET-UP ----
 #===================================================================================*
 
-library(dplyr) ; library(tidyr) ; library(ggplot2) 
-library(grid) ; library(gridExtra) ; library(stringr)
+# Smart installer will check list of packages that are installed, install any
+# necessary package that is missing, and load the library:
 
-# STACKED BAR:
+smartInstallAndLoad <- function(packageVector){
+  for(i in 1:length(packageVector)){
+    package <- packageVector[i]
+    if(!package %in% rownames(installed.packages())){
+      install.packages(packageVector[i],repos="http://cran.rstudio.com/", dependencies=TRUE)
+    }
+  }
+  lapply(packageVector, library, character.only = TRUE)
+}
 
-# Theme:
+# Load and potentially install libraries:
+
+smartInstallAndLoad(c('dplyr', 'tidyr','stringi','stringr', 'sp',
+                      'lubridate','raster', 'grid', 'gridExtra',
+                      'dismo', 'ggplot2'))
+
+# Override some libraries for tidyverse functions:
+
+filter <- dplyr::filter
+select <- dplyr::select
+
+# Set outPlots directory (example, do not run):
+
+outPlotsDir <- 'C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/'
+
+# Plot theme:
 
 plot_theme <- function(){
   theme_bw() +
@@ -69,11 +92,9 @@ dataStackedBar <- bind_rows(
              ordered = TRUE)
          )
 
-#-----------------------------------------------------------------------------------*
+#===================================================================================*
 # ---- PLOTTING ----
 #===================================================================================*
-
-# names(colorBlindPalette) <- unique(dataStackedBar$variable)
 
 plotWithTemp <- ggplot(dataStackedBar %>%
                          arrange(variable), 
@@ -88,8 +109,6 @@ plotWithTemp <- ggplot(dataStackedBar %>%
   theme(legend.title = element_blank(),
         legend.key.height = unit(1,"line"),
         legend.key = element_rect(size=2, color = 'white'),
-        # legend.margin = unit(0, 'line'),
-        # legend.key.size = unit(2, 'lines'),
         legend.position = 'top')
 
 colorBlindPalette2 <- c("#E69F00",  "#009E73", "#F0E442", 
@@ -120,12 +139,10 @@ legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
 
 # Plot output:
 
-png(filename = "C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/VariableContributionMultiPlot.png", 
+png(filename = paste0(outPlotsDir, "VariableContributionMultiPlot.png"), 
     width = 7.5, height = 4, units = 'in', res = 300)
 gridExtra::grid.arrange(legend, gridExtra::arrangeGrob(plotWithTemp + theme(legend.position = 'none'),
                                  plotNoTemp + theme(legend.position = 'none'),
                                  nrow = 1),
              nrow = 2, heights = c(1, 6))
 dev.off()
-
-
