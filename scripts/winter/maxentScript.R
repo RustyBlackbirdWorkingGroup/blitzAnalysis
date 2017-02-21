@@ -1,7 +1,7 @@
 # Maxent, running winter data
-#===================================================================================================*
+#===============================================================================*
 # ---- SET-UP ----
-#===================================================================================================*
+#===============================================================================*
 
 # Smart installer will check list of packages that are installed, install any
 # necessary package that is missing, and load the library:
@@ -33,23 +33,27 @@ select <- dplyr::select
 
 outPlotsDir <- 'C:/Users/Brian/Desktop/gits/blitzAnalysis/outPlots/'
 
-#----------------------------------------------------------------------------*
+# Set path to climate data:
+
+pathToClimateData <- '/Users/bsevans/Dropbox/rustyBlackbirdData/climateRasters/'
+
+#-------------------------------------------------------------------------------*
 # ---- Basic functions ---
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
 se <- function(x) {sd(x)/sqrt(length(x))}
 
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 # Get swd (across observation types):
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
 swdSmall <- prepSWD(1,19, 2009:2011, protocolChoice = 'all')
 swdMedium <- prepSWD(20,99, 2009:2011, protocolChoice = 'all')
 swdLarge <- prepSWD(100,Inf, 2009:2011, protocolChoice = 'all')
 
-#===================================================================================================*
+#===============================================================================*
 # ---- MODEL RUNNING AND CALIBRATION ----
-#===================================================================================================*
+#===============================================================================*
 
 # Basic function to run a model:
 
@@ -75,7 +79,7 @@ maxentRun <- function(swd, betaMultiplier,
       select(-k) %>%
       data.frame
   }
-  # Set model arguments
+  # Set model arguments:
   modArguments <- c('nothreshold', 'nohinge', 'noproduct','noquadratic',
                     str_c('betamultiplier=', betaMultiplier),
                     'addallsamplestobackground','writebackgroundpredictions',
@@ -130,9 +134,9 @@ readLambdaFile <- function(model){
     select(variable = V1, lambda = V2)
 }
 
-#----------------------------------------------------------------------------*
-# Calculate AIC:
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
+# ---- Calculate AIC ----
+#-------------------------------------------------------------------------------*
 
 # Function to calculate AICc, given a specific SWD and beta multiplier:
 
@@ -166,9 +170,9 @@ calcAIC <- function(swd, betaMultiplier) {
   return(aicFrame)
 }
 
-#----------------------------------------------------------------------------*
-# Assess aic values across beta values and output a table of results:
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
+# ---- Assess aic values across beta values and output results table -----
+#-------------------------------------------------------------------------------*
 
 betaFinder <- function(swd, betaValues){
   out <- data.frame(matrix(nrow = length(betaValues),ncol = 3))
@@ -190,20 +194,15 @@ betaMedium <- betaFinder(swdMedium, betaValues)
 betaLarge <- betaFinder(swdLarge, betaValues)
 
 # OUTPUT (because that takes a while to run):
+# Small = 2.7, medium = 1.4, large = 1.0
 
-# beta, small beta = 2.7, aic = 14362.45, nparm = 8
+#===============================================================================*
+# ---- MODEL EVALUATION ----
+#===============================================================================*
 
-# beta, medium = 1.4, aic = 5525.057, nparm = 10
-
-# beta, large = 1.0, aic = 2599.788, nparm = 8
-
-#===================================================================================================*
-# ---- MODEL RUNNING AND CALIBRATION ----
-#===================================================================================================*
-
-#----------------------------------------------------------------------------*
-# Get AUC values associated with test points
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
+# ---- Get AUC values associated with test points ----
+#-------------------------------------------------------------------------------*
 
 # Get best models for each flock size:
 
@@ -359,7 +358,7 @@ summaryAUCbyObservationType <- summaryAUC %>%
             summaryMediumEb, summaryMediumBlitz,
             summaryLargeEb, summaryLargeBlitz)
 
-# Plot AUC by observation  type output:
+# Example plot of AUC by observation:
 
 dodge <- position_dodge(.4)
 ann_text <- data.frame(mpg = 15,wt = 5,lab = "Text",
@@ -384,9 +383,9 @@ aucPlot <- ggplot(
   theme(legend.key = element_blank()) + 
   facet_grid(flockSize ~ .)
 
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 # ---- Get ROC and plot ----
-#----------------------------------------------------------------------------*
+#-------------------------------------------------------------------------------*
 
 # Function to get a maxent evaluation frame:
 
@@ -502,41 +501,9 @@ grid.arrange(
 )
 dev.off()
 
-#----------------------------------------------------------------------------*
-# ---- Make model predictions (for raster maps) ----
-#----------------------------------------------------------------------------*
-
-# Function to get environmental rasters for a given year:
-
-getRstack <- function(year){
-  # Add tmin and ppt for a given year:
-  rStack[['tmin']] <- raster(paste0(pathToRasterData, 'climateRasters/tmin',year))
-  rStack[['tmin2']] <- rStack[['tmin']]^2
-  rStack[['ppt']] <-  raster(paste0(pathToRasterData, 'climateRasters/tmin',year))
-  return(rStack)
-}
-
-# Function to get prediction of a given best model and year:
-
-getLogisticPrediction <- function(bestModel, rasterStack){
-  predict(bestModel, rasterStack,
-          args='outputformat=logistic', 
-          progress='text')
-}
-
-# Get logistic predictions (2009 example):
-
-rStack2009 <- getRstack(2009)
-
-small2009 <- getLogisticPrediction(bestModelSmall, rStack2009)
-medium2009 <- getLogisticPrediction(bestModelMedium, rStack2009)
-large2009 <- getLogisticPrediction(bestModelLarge, rStack2009)
-
-# To plot these, go to script plotSuitabilityMaps.R
-
-#----------------------------------------------------------------------------*
+#===============================================================================*
 # ---- Area, prevalence, threshold ----
-#----------------------------------------------------------------------------*
+#===============================================================================*
 
 # Function to run model for area and prevalence, given a threshold:
 
@@ -589,8 +556,8 @@ getAreaPrevalenceFrame <- function(model, i){
     spread(stat, value)
 }
 
-# Function to generate a random sample of flock size 1 by flock size 2
-# Note: Flock size 1 is the flocks size of interest, comparison to flock size 2
+# Function to generate a random sample of flock size 1 by flock size 2 Note:
+# Flock size 1 is the flocks size of interest, comparison to flock size 2
 
 randomSWDpair <- function(swd1, swd2){
   nSamples <- nrow(filter(swd1, pa == 1))
@@ -606,7 +573,8 @@ randomSWDpair <- function(swd1, swd2){
      bind_rows(bgPoints)
 }
 
-# Make random prediction models. Because the result will be large, save as RDS rather than store in memory:
+# Make random prediction models. Because the result will be large, save as RDS
+# rather than store in memory:
 
 # Empty matrices for output
 
@@ -650,13 +618,7 @@ for(i in 1:length(outList)){
 
 permutationFrame <- bind_rows(outList)
 
-cbPallete <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
-                        "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
-
-cbPallete <- c("#E69F00", "#009E73",
-               "#0072B2", "#D55E00", "#CC79A7")
-
-# Plot predicted area by flock size (large):
+# Example plot of predicted area by flock size (large):
 
 predictedAreaLFplot <- ggplot(permutationFrame %>%
          mutate(
@@ -668,7 +630,6 @@ predictedAreaLFplot <- ggplot(permutationFrame %>%
          filter(permuted != 'Medium-Small'),
        aes(x=area)) + 
   geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
-  scale_fill_manual(values = cbPallete) +
   geom_segment(data = getAreaPrevalenceFrame(bestModelLarge,1),
                aes(x = area, xend = area, y = 0, yend = 35),
                size = 2, linetype = 1, lineend = 'round') +
@@ -681,102 +642,9 @@ predictedAreaLFplot <- ggplot(permutationFrame %>%
   xlim(.15, .4) +
   ylim(0, 38)
 
-# Plot predicted area by flock size (medium):
-
-predictedAreaMFplot <- permutationFrame %>%
-  mutate(
-    permuted = str_replace(permuted, 'modLM', 'Medium-Large'),
-    permuted = str_replace(permuted, 'modLS', 'Large-Small'),
-    permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
-    Permutation = permuted) %>%
-  filter(permuted != 'Large-Small') %>%
-  ggplot(aes(x=area)) + 
-  geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
-  scale_fill_manual(values = cbPallete[-c(1:2)]) +
-  geom_segment(data = getAreaPrevalenceFrame(bestModelMedium,1),
-               aes(x = area, xend = area, y = 0, yend = 35),
-               size = 1.5, linetype = 1, lineend = 'round') +
-  theme_bw() +
-  labs(x = 'Fractional predicted area',
-       y = 'Density') +
-  theme(axis.title = element_text(size = 15)) +
-  xlim(.15, .4) +
-  ylim(0, 38)
-
-# Plot predicted prevalence (large flock):
-
-predictedPrevalenceLFplot <- permutationFrame %>%
-  mutate(
-    permuted = str_replace(permuted, 'modLM', 'Large-Medium'),
-    permuted = str_replace(permuted, 'modLS', 'Large-Small'),
-    permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
-    Permutation = permuted
-  ) %>%
-  filter(permuted != 'Medium-Small') %>%
-  ggplot(aes(x=prevalence)) + 
-  geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
-  scale_fill_manual(values = cbPallete) +
-  geom_segment(data = getAreaPrevalenceFrame(bestModelLarge,1),
-               aes(x = prevalence, xend = prevalence, y = 0, yend = 35),
-               size = 1.5, linetype = 1, lineend = 'round') +
-  theme_bw() +
-  labs(x = 'Prevalence',
-       y = 'Density') +
-  theme(
-    axis.title = element_text(size = 15)
-  ) +
-  xlim(.15, .4) +
-  ylim(0, 38)
-
-# Plot predicted prevalence (medium flock):
-
-predictedPrevalenceMFplot <- permutationFrame %>%
-  mutate(
-    permuted = str_replace(permuted, 'modLM', 'Medium-Large'),
-    permuted = str_replace(permuted, 'modLS', 'Large-Small'),
-    permuted = str_replace(permuted, 'modMS', 'Medium-Small'),
-    Permutation = permuted
-  ) %>%
-  filter(permuted != 'Large-Small') %>%
-  ggplot(aes(x=prevalence)) + 
-  geom_density(aes(group=Permutation, fill=Permutation), alpha=0.7) +
-  scale_fill_manual(values = cbPallete[-c(1:2)]) +
-  geom_segment(data = getAreaPrevalenceFrame(bestModelMedium,1),
-               aes(x = prevalence, xend = prevalence, y = 0, yend = 35),
-               size = 1.5, linetype = 1, lineend = 'round') +
-  theme_bw() +
-  labs(x = 'Prevalence',
-       y = 'Density') +
-  theme(
-    axis.title = element_text(size = 15)
-  ) +
-  xlim(.15, .4) +
-  ylim(0, 38)
-
-# Plot and save area prevalence plots:
-
-png(filename = paste0(outPlotsDir, 'areaPrevalence.png'),
-    width = 12, height = 4.5, units = 'in', res = 300)
-grid.arrange(
-  arrangeGrob(
-    predictedPrevalenceLFplot + guides(fill = FALSE) +
-      geom_text(aes(x = .38, y = 28), label = 'Large\nflocks', size = 5) +
-      geom_text(aes(x = .15, y = 35), label = 'A)', size = 5),
-    predictedAreaLFplot  +
-      geom_text(aes(x = .38, y = 28), label = 'Large\nflocks', size = 5) +
-      geom_text(aes(x = .15, y = 35), label = 'B)', size = 5),
-    predictedPrevalenceMFplot + guides(fill = FALSE) +
-      geom_text(aes(x = .38, y = 28), label = 'Medium\nflocks', size = 5) +
-      geom_text(aes(x = .15, y = 35), label = 'A)', size = 5),
-    predictedAreaMFplot +
-      geom_text(aes(x = .38, y = 28), label = 'Medium\nflocks', size = 5) +
-      geom_text(aes(x = .15, y = 35), label = 'B)', size = 5), ncol=2)
-    )
-dev.off()
-
-#----------------------------------------------------------------------------*
-# ---- Get error in predictions ----
-#----------------------------------------------------------------------------*
+#===============================================================================*
+# ---- Evaluation frames ----
+#===============================================================================*
 
 # Next: k-fold for each model for getting error in predictions
 
@@ -866,92 +734,6 @@ summaryByFlock <- bind_rows(summaryListSmall, summaryListMedium, summaryListLarg
             minCi = meanValue - seValue * 1.96,
             maxCi = meanValue + seValue * 1.96)
 
-#----------------------------------------------------------------------------*
-# ---- Test output with random predictions  ----
-#----------------------------------------------------------------------------*
-
-# Generate a random sample of flock size 1 by flock size 2:
-# Note: Flock size 1 is the flocks size of interest, comparison to flock size 2
-
-random.swd.pair <- function(swd1, swd2){
-  bgPoints <- filter(swd1, pa == 0)
-  swd1pres <- filter(swd1, pa == 1)
-  swd2pres <- filter(swd2, pa == 1)
-  # Remove unevaluated flock
-  # Determine the sample size as the proportion of flock size 1:
-  probFS1 = nrow(swd1pres)/(nrow(swd1pres) + nrow(swd2pres))
-  # Bind flock size 1 and flock size 2 frames:
-  flockData <- bind_rows(swd1pres, swd2pres)
-  # Generate random value of 1 or 0 with the probability of obtaining
-  # a 1 related to the number of s1 observations:
-  flockData %>%
-    mutate(s.rand = rbinom(nrow(.),1,probFS1)) %>%
-    filter(s.rand == 1) %>%
-    mutate(pa = 1) %>%
-    select(-s.rand) %>%
-     bind_rows(bgPoints)
-}
-
-# Function to run model with random pair:
-
-maxentRunRandomPair <- function(swd1, swd2, bestMod, betaMultiplier){
-  swd <- random.swd.pair(swd1, swd2)
-  # Get environmental variables to include from the best model:
-  variablesToInclude <- getVariableContribution(bestModel) %>%
-    .$variable
-  # Remove environmental variables not used in this model:
-  swdReduced <- swd %>%
-    select(pa) %>%
-    bind_cols(
-      swd %>% select(one_of(variablesToInclude))
-    ) 
-  # Set model arguments
-  modArguments <- c('nothreshold', 'nohinge', 'noproduct','noquadratic',
-                    str_c('betamultiplier=', betaMultiplier),
-                    'addallsamplestobackground',
-                    'writebackgroundpredictions',
-                    'noautofeature','nooutputgrids',
-                    'maximumiterations=10000', 'verbose')
-  # Run maxent model with training and background data:
-  maxentModel <- maxent(swdReduced[,-1], swdReduced[,1], args = modArguments)
-}
-
-# Function to get AUC of sampled values:
-
-getSampledAUC <- function(swd1, swd2, bestMod, betaMultiplier){
-  model <- maxentRunRandomPair(swd1, swd2, bestMod, betaMultiplier)
-  as.numeric(model@results[5,1])
-}
-
-# Get sampled AUC for 100 random samples for large to medium, large to small,
-# medium to small
-
-sampleAUClistLM <- vector('list', length = 100)
-sampleAUClistLS <- vector('list', length = 100)
-sampleAUClistMS <- vector('list', length = 100)
-
-for(i in 1:100){
-  sampleAUClistLM[[i]] <- getSampledAUC(swdLarge, swdMedium, bestModelLarge, 2.7)
-  sampleAUClistLS[[i]] <- getSampledAUC(swdLarge, swdSmall, bestModelLarge, 2.7)
-  sampleAUClistMS[[i]] <- getSampledAUC(swdMedium, swdSmall, bestModelMedium, 1.4)
-}
-
-sampleAUClistSeb <- vector('list', length = 100)
-sampleAUClistSblitz <- vector('list', length = 100)
-sampleAUClistMeb <- vector('list', length = 100)
-sampleAUClistMblitz <- vector('list', length = 100)
-sampleAUClistLeb <- vector('list', length = 100)
-sampleAUClistLblitz <- vector('list', length = 100)
-
-for(i in 1:100){
-  sampleAUClistSeb <- vector('list', length = 100)
-  sampleAUClistSblitz <- vector('list', length = 100)
-  sampleAUClistMeb <- vector('list', length = 100)
-  sampleAUClistMblitz <- vector('list', length = 100)
-  sampleAUClistLeb <- vector('list', length = 100)
-  sampleAUClistLblitz <- vector('list', length = 100)
-}
-
 # Function to get an evaluation object:
 
 modelEvaluate <- function(minFlockSize, maxFlockSize, years, protocolChoice = 'all'){
@@ -977,17 +759,14 @@ maxentEvaluate <- function(observationClass, flockSizeClass, kFold, beta.multipl
     filter(k == kFold)
   testPresence <- swdTest %>%
     filter(sp == 1) %>%
-    select(-c(sp,lon, lat,k)) # select(lon, lat)%>% 
-  #SpatialPoints(proj4string = CRS(projection(rStack2009)))
+    select(-c(sp,lon, lat,k))
   testAbsence <- swdTest %>%
     filter(sp == 0) %>%
-    select(-c(sp,lon, lat,k)) # select(lon, lat)%>%%>%
-  #SpatialPoints(proj4string = CRS(projection(rStack2009)))
+    select(-c(sp,lon, lat,k))
   modelEvaluation <- evaluate(testPresence, testAbsence, maxentModel)
   return(list(maxentModel = maxentModel, modelEvaluation = modelEvaluation,
               swd = maxentModelOut$swd, swdTest = swdTest))
 }
-
 
 # Function to run across folds:
 
@@ -1024,6 +803,10 @@ beta.multiplier = 0
 allIndOut <- maxentAcrossFolds(observationClass, 'ind', beta.multiplier)
 allSfOut <- maxentAcrossFolds(observationClass, 'sf', beta.multiplier)
 allLfOut <- maxentAcrossFolds(observationClass, 'lf', beta.multiplier)
+
+#===============================================================================*
+# ---- Variable contribution ----
+#===============================================================================*
 
 # Functions to extract variable contribution for a given model:
 
@@ -1066,9 +849,9 @@ lambdaContributionFrame_allSfOut <- makeLambdaContributionFrame(allSfOut)
 
 lambdaContributionFrame_allLfOut <- makeLambdaContributionFrame(allLfOut)
 
-#-------------------------------------------------------------------------------*
+#===============================================================================*
 # ---- Niche equivalency analysis ----
-#-------------------------------------------------------------------------------*
+#===============================================================================*
 
 flockData <- swdRUBL[[1]] 
 
@@ -1119,7 +902,6 @@ sf <- maxentRunRawPlot(filter(flockData, sp == 'sf') %>%
 ind <- maxentRunRawPlot(filter(flockData, sp == 'ind') %>%
                           mutate(sp = 1))
 
-
 # Function to calculate modified Hellinger similarities for a given model run:
 
 I.dist <- function(p.x, p.y){
@@ -1167,7 +949,6 @@ I.lf.ind <- run.nea('lf','ind',1000)
 # Small flock vs. individual sightings (<20 individuals):
 
 I.sf.ind <- run.nea('sf','ind',1000)
-
 
 # Stats for niche equivalency analyses.
 # Statistic pairwise comparisons of null and actual modified-Hellinger 
@@ -1234,7 +1015,6 @@ data.frame(I = I.lf.ind$I.null) %>%
   geom_segment(data = data.frame(I = I.lf.ind$I.actual),
                aes(x = I, y = 0, xend = I, yend = Inf))
 
-
 data.frame(I = I.sf.ind$I.null) %>%
   tbl_df %>%
   ggplot(aes(I)) +
@@ -1245,5 +1025,37 @@ data.frame(I = I.sf.ind$I.null) %>%
   theme_bw() +
   geom_segment(data = data.frame(I = I.sf.ind$I.actual),
                aes(x = I, y = 0, xend = I, yend = Inf))
+
+#===============================================================================*
+# ---- Make model predictions (for raster maps) ----
+#===============================================================================*
+
+# Function to get environmental rasters for a given year:
+
+getRstack <- function(year){
+  # Add tmin and ppt for a given year:
+  rStack[['tmin']] <- raster(paste0(pathToClimateData, 'tmin',year))
+  rStack[['tmin2']] <- rStack[['tmin']]^2
+  rStack[['ppt']] <-  raster(paste0(pathToClimateData, 'ppt',year))
+  return(rStack)
+}
+
+# Function to get prediction of a given best model and year:
+
+getLogisticPrediction <- function(bestModel, rasterStack){
+  predict(bestModel, rasterStack,
+          args='outputformat=logistic', 
+          progress='text')
+}
+
+# Get logistic predictions (2009 example):
+
+rStack2009 <- getRstack(2009)
+
+small2009 <- getLogisticPrediction(bestModelSmall, rStack2009)
+medium2009 <- getLogisticPrediction(bestModelMedium, rStack2009)
+large2009 <- getLogisticPrediction(bestModelLarge, rStack2009)
+
+# To plot these, go to script plotSuitabilityMaps.R
 
 #### END ####
